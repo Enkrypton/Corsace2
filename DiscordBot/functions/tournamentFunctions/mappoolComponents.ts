@@ -1,5 +1,5 @@
 import { ChatInputCommandInteraction, Message } from "discord.js";
-import { tournamentSearchConditions } from "../dbFunctions/getTournaments";
+import { tournamentSearchConditions } from "../../../Server/functions/get/getTournaments";
 import { Tournament, TournamentStatus } from "../../../Models/tournaments/tournament";
 import getTournament from "./getTournament";
 import getMappool from "./getMappool";
@@ -11,8 +11,8 @@ import { Mappool } from "../../../Models/tournaments/mappools/mappool";
 import { MappoolSlot } from "../../../Models/tournaments/mappools/mappoolSlot";
 import { MappoolMap } from "../../../Models/tournaments/mappools/mappoolMap";
 import { User } from "../../../Models/user";
-import { TournamentRoleType } from "../../../Models/tournaments/tournamentRole";
 import { Stage } from "../../../Models/tournaments/stage";
+import { TournamentRoleType } from "../../../Interfaces/tournament";
 
 type optionalComponents = { stage?: Stage, staff?: User };
 type TournamentOnly = { tournament: Tournament };
@@ -38,7 +38,8 @@ export default async function mappoolComponents (
         text: string,
         roles: TournamentRoleType[],
     },
-    getJobPosts?: boolean
+    getJobPosts?: boolean,
+    getReplays?: boolean
 ): Promise<undefined | MappoolComponentsType> {
     
     // Get tournament
@@ -77,7 +78,7 @@ export default async function mappoolComponents (
         return { tournament, mappool, stage, staff };
 
     // Get slotMod
-    const slotMod = await getMappoolSlot(m, mappool, slot, false, map !== undefined, getJobPosts);
+    const slotMod = await getMappoolSlot(m, mappool, slot, false, map !== undefined, getJobPosts, getReplays);
     if (!slotMod) 
         return;
 

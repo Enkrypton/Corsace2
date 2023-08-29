@@ -65,12 +65,18 @@ declare module "node-config-ts" {
         };
 
         osu: {
+            proxyBaseUrl?: string;
             v1: {
                 apiKey: string;
             };
             v2: {
                 clientId: string;
                 clientSecret: string;
+            };
+            bancho: {
+                username: string;
+                ircPassword: string;
+                botAccount: boolean;
             };
         };
 
@@ -94,6 +100,7 @@ declare module "node-config-ts" {
             buckets: {
                 mappacks: S3BucketConfig;
                 mappacksTemp: S3BucketConfig;
+                teamAvatars: S3BucketConfig;
             };
         }
 
@@ -107,10 +114,18 @@ declare module "node-config-ts" {
         open: ISubSiteConfig;
         api: IWebServiceConfig;
         cronRunner: IWebServiceConfig;
+        banchoBot: IWebServiceConfig;
 
         interOpAuth: {
             username: string;
             password: string;
+        };
+
+        centrifugo: {
+            apiUrl: string;
+            publicUrl: string;
+            apiKey: string;
+            ipWhitelist: string[];
         };
     }
 

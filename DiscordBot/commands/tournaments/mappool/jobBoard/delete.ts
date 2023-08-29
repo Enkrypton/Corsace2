@@ -1,7 +1,5 @@
 import { ChatInputCommandInteraction, Message, SlashCommandBuilder } from "discord.js";
 import { Command } from "../../../index";
-import { TournamentRoleType } from "../../../../../Models/tournaments/tournamentRole";
-import { TournamentChannelType } from "../../../../../Models/tournaments/tournamentChannel";
 import respond from "../../../../functions/respond";
 import { securityChecks } from "../../../../functions/tournamentFunctions/securityChecks";
 import { extractParameters } from "../../../../functions/parameterFunctions";
@@ -12,10 +10,11 @@ import channelID from "../../../../functions/channelID";
 import confirmCommand from "../../../../functions/confirmCommand";
 import { archiveJobThread } from "../../../../functions/tournamentFunctions/archiveMapThreads";
 import mappoolLog from "../../../../functions/tournamentFunctions/mappoolLog";
-import getUser from "../../../../functions/dbFunctions/getUser";
+import getUser from "../../../../../Server/functions/get/getUser";
 import commandUser from "../../../../functions/commandUser";
 import { loginResponse } from "../../../../functions/loginResponse";
 import { JobPost } from "../../../../../Models/tournaments/mappools/jobPost";
+import { TournamentRoleType, TournamentChannelType } from "../../../../../Interfaces/tournament";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)

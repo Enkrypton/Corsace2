@@ -1,10 +1,13 @@
 <template>
-    <div class="layout layout--mca">
-        <the-header 
-            :site="'mca'"
+    <div class="layout layout--mca-ayim">
+        <DevBanner 
+            v-if="devBanner"
+            @close="devBanner = false"
+        />
+        <the-header
             class="mcaayim__header"
         >
-            <a 
+            <!-- <a 
                 :href="`/${$route.params.year}`"
                 @click="updateSelectedMode('')"
             >          
@@ -17,7 +20,7 @@
 
             <mode-switcher 
                 :enable-mode-eligibility="$route.name === 'year-stage'"
-            />
+            /> -->
         </the-header>
         <div 
             class="main"
@@ -114,6 +117,7 @@
 import { Vue, Component } from "vue-property-decorator";
 import { State, namespace } from "vuex-class";
 
+import DevBanner from "../../Assets/components/DevBanner.vue";
 import TheHeader from "../../Assets/components/header/TheHeader.vue";
 import ModeSwitcher from "../../Assets/components/mca-ayim/ModeSwitcher.vue";
 import YearSwitcher from "../../Assets/components/mca-ayim/YearSwitcher.vue";
@@ -126,6 +130,7 @@ const mcaAyimModule = namespace("mca-ayim");
 
 @Component({
     components: {
+        DevBanner,
         TheHeader,
         ModeSwitcher,
         YearSwitcher,
@@ -142,6 +147,7 @@ export default class UnderConstruction extends Vue {
 
     @mcaAyimModule.Action updateSelectedMode;
 
+    devBanner = true;
     isSmall = false;
 
     async mounted () {
@@ -153,7 +159,7 @@ export default class UnderConstruction extends Vue {
         }
 
         await Promise.all([
-            this.$store.dispatch("setViewTheme"),
+            this.$store.dispatch("setViewTheme", "light"),
             this.$store.dispatch("mca-ayim/setSelectedMode"),
         ]);
     }

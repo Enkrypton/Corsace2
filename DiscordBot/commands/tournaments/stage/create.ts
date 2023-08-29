@@ -1,17 +1,18 @@
 import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, PermissionFlagsBits, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import { Command } from "../..";
-import { profanityFilter } from "../../../../Interfaces/comment";
+import { profanityFilterStrong } from "../../../../Interfaces/comment";
 import { Round } from "../../../../Models/tournaments/round";
-import { ScoringMethod, Stage, StageType } from "../../../../Models/tournaments/stage";
+import { Stage } from "../../../../Models/tournaments/stage";
 import { TournamentStatus } from "../../../../Models/tournaments/tournament";
 import { loginResponse } from "../../../functions/loginResponse";
 import respond from "../../../functions/respond";
-import getUser from "../../../functions/dbFunctions/getUser";
+import getUser from "../../../../Server/functions/get/getUser";
 import commandUser from "../../../functions/commandUser";
 import confirmCommand from "../../../functions/confirmCommand";
 import getTournament from "../../../functions/tournamentFunctions/getTournament";
 import channelID from "../../../functions/channelID";
 import { discordStringTimestamp, parseDateOrTimestamp } from "../../../../Server/utils/dateParse";
+import { ScoringMethod, StageType } from "../../../../Interfaces/stage";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (!m.guild || !(m.member!.permissions as Readonly<PermissionsBitField>).has(PermissionFlagsBits.Administrator))
@@ -27,6 +28,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     const scoringRegex = new RegExp(/-s ([a-zA-Z0-9_ ]{4,20})/);
     const teamCountRegex = new RegExp(/-tc (\d{1,2}) (\d{1,2})/);
     const helpRegex = new RegExp(/-h/);
+    const teamQualifierChooseRegex = new RegExp(/-tqc/);
     if (m instanceof Message && (helpRegex.test(m.content) || (!nameRegex.test(m.content) && !abbreviationRegex.test(m.content) && !dateRegex.test(m.content) && !typeRegex.test(m.content) && !scoringRegex.test(m.content) && !teamCountRegex.test(m.content)))) {
         await m.reply(`Provide all required parameters! Here's a list of them:\n**Name:** \`-n <name>\`\n**Abbreviation:** \`-a <abbreviation>\`\n**Date:** \`-d <start date> <end date>\`\n**Type:** \`-t <type>\`\n**Scoring Method:** \`-s <scoring method>\`\n**Team Count:** \`-tc <min> <max>\`\n\nIt's recommended to use slash commands for any \`create\` command`);
         return;
@@ -42,7 +44,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
         await respond(m, "Provide a valid name for ur stage, ur only allowed the following characters: a-z, A-Z, 0-9, _, and spaces. The name must be between 5 and 48 characters long");
         return;
     }
-    if (profanityFilter.test(name)) {
+    if (profanityFilterStrong.test(name)) {
         await respond(m, "The name is sus . Change it to something more appropriate");
         return;
     }
@@ -80,7 +82,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
         await respond(m, "A stage with that abbreviation already exists");
         return;
     }
-    if (profanityFilter.test(abbreviation)) {
+    if (profanityFilterStrong.test(abbreviation)) {
         await respond(m, "The abbreviation is sus . Change it to something more appropriate");
         return;
     }
@@ -179,6 +181,12 @@ async function run (m: Message | ChatInputCommandInteraction) {
     stage.initialSize = initial;
     stage.finalSize = final;
 
+    // Check team qualifier choose order
+    if (stage.stageType === StageType.Qualifiers) {
+        const chooseOrder = m instanceof Message ? teamQualifierChooseRegex.test(m.content) : m.options.getBoolean("team_choose_qualifier_order");
+        stage.qualifierTeamChooseOrder = chooseOrder;
+    }
+
     // Generate rounds if single/double elimination
     stage.rounds = [];
     if (stage.stageType === StageType.Singleelimination || stage.stageType === StageType.Doubleelimination) {
@@ -260,7 +268,10 @@ async function stageDone (m: Message | ChatInputCommandInteraction, stage: Stage
             { name: "Initial → Final Team Count", value: stage.initialSize + " → " + stage.finalSize, inline: true }
         )
         .setTimestamp(new Date)
-        .setAuthor({ name: commandUser(m).tag, iconURL: (m.member as GuildMember | null)?.displayAvatarURL() || undefined });
+        .setAuthor({ name: commandUser(m).username, iconURL: (m.member as GuildMember | null)?.displayAvatarURL() || undefined });
+
+    if (stage.stageType === StageType.Qualifiers)
+        embed.addFields({ name: "Team Qualifier Choose Order", value: stage.qualifierTeamChooseOrder ? "Yes" : "No", inline: true });
 
     await m.channel!.send({ embeds: [embed] });
 }
@@ -298,7 +309,7 @@ const data = new SlashCommandBuilder()
                 },
                 {
                     name: "Round Robin",
-                    value: "RoundRobin",
+                    value: "Roundrobin",
                 },
                 {
                     name: "Swiss",
@@ -358,6 +369,10 @@ const data = new SlashCommandBuilder()
         option.setName("final")
             .setDescription("The final number of teams in the stage.")
             .setRequired(true))
+    .addBooleanOption((option) =>
+        option.setName("team_choose_qualifier_order")
+            .setDescription("Let teams choose their qualifier map order (for qual stages only).")
+            .setRequired(false))
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setDMPermission(false);
 

@@ -1,9 +1,10 @@
 import { ChatInputCommandInteraction, GuildMember, Message, User as DiscordUser } from "discord.js";
+import { TournamentRoleType } from "../../../Interfaces/tournament";
 import { Tournament } from "../../../Models/tournaments/tournament";
-import { TournamentRole, TournamentRoleType } from "../../../Models/tournaments/tournamentRole";
+import { TournamentRole } from "../../../Models/tournaments/tournamentRole";
 import { User } from "../../../Models/user";
 import { discordClient } from "../../../Server/discord";
-import getUser from "../dbFunctions/getUser";
+import getUser from "../../../Server/functions/get/getUser";
 import respond from "../respond";
 
 export default async function getStaff (m: Message | ChatInputCommandInteraction, tournament: Tournament, target: string, targetRoles: TournamentRoleType[]): Promise<User | undefined> {

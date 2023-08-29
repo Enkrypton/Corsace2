@@ -1,8 +1,9 @@
 import { ChatInputCommandInteraction, GuildMemberRoleManager, Message, PermissionFlagsBits, PermissionsBitField } from "discord.js";
-import { TournamentRole, TournamentRoleType } from "../../../Models/tournaments/tournamentRole";
-import { TournamentChannel, TournamentChannelType } from "../../../Models/tournaments/tournamentChannel";
+import { TournamentRole } from "../../../Models/tournaments/tournamentRole";
+import { TournamentChannel } from "../../../Models/tournaments/tournamentChannel";
 import respond from "../respond";
 import channelID from "../channelID";
+import { TournamentRoleType, TournamentChannelType } from "../../../Interfaces/tournament";
 
 export async function hasTournamentRoles (m: Message | ChatInputCommandInteraction, targetRoles: TournamentRoleType[]): Promise<boolean> {
     if (targetRoles.length === 0)
@@ -13,7 +14,12 @@ export async function hasTournamentRoles (m: Message | ChatInputCommandInteracti
         await respond(m, "Can't fetch ur roles");
         return false;
     }
+
     const roleIDs = memberRoles instanceof GuildMemberRoleManager ? memberRoles.cache.map(r => r.id) : memberRoles;
+    if (roleIDs.length === 0) {
+        await respond(m, "U don't have any roles");
+        return false;
+    }
 
     const roles = await TournamentRole
         .createQueryBuilder("role")

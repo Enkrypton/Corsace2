@@ -1,13 +1,11 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChatInputCommandInteraction, Message, MessageComponentInteraction, SlashCommandBuilder, ThreadChannel } from "discord.js";
 import { Command } from "../../index";
-import { TournamentChannelType } from "../../../../Models/tournaments/tournamentChannel";
-import { TournamentRoleType } from "../../../../Models/tournaments/tournamentRole";
 import { MappoolMapHistory } from "../../../../Models/tournaments/mappools/mappoolMapHistory";
 import { loginResponse } from "../../../functions/loginResponse";
 import { discordClient } from "../../../../Server/discord";
-import { deletePack } from "../../../functions/tournamentFunctions/mappackFunctions";
+import { deletePack } from "../../../../Server/functions/tournaments/mappool/mappackFunctions";
 import { randomUUID } from "crypto";
-import getUser from "../../../functions/dbFunctions/getUser";
+import getUser from "../../../../Server/functions/get/getUser";
 import commandUser from "../../../functions/commandUser";
 import respond from "../../../functions/respond";
 import { securityChecks } from "../../../functions/tournamentFunctions/securityChecks";
@@ -22,6 +20,7 @@ import mappoolLog from "../../../functions/tournamentFunctions/mappoolLog";
 import { User } from "../../../../Models/user";
 import { MappoolSlot } from "../../../../Models/tournaments/mappools/mappoolSlot";
 import channelID from "../../../functions/channelID";
+import { TournamentRoleType, TournamentChannelType } from "../../../../Interfaces/tournament";
 
 async function getMappools (m: Message | ChatInputCommandInteraction, tournament: Tournament, pool1: string, pool2: string | null): Promise<[Mappool, Mappool] | undefined> {
     const mappool1 = await getMappool(m, tournament, pool1);

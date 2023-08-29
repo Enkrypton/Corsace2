@@ -38,12 +38,18 @@
         "secret": "@@BN_SECRET"
     },
     "osu": {
+        "proxyBaseUrl": "@@OSU_PROXY_BASEURL",
         "v1": {
             "apiKey": "@@OSU_V1_APIKEY"
         },
         "v2": {
             "clientId": "@@OSU_V2_CLIENTID",
             "clientSecret": "@@OSU_V2_CLIENTSECRET"
+        },
+        "bancho": {
+            "username": "@@OSU_BANCHO_USERNAME",
+            "ircPassword": "@@OSU_BANCHO_IRC_PASSWORD",
+            "botAccount": "@@OSU_BANCHO_BOT_ACCOUNT"
         }
     },
     "google": {
@@ -72,6 +78,12 @@
         "publicUrl": "@@MCA_PUBLICURL",
         "ssr": "@@MCA_SSR"
     },
+    "open": {
+        "host": "0.0.0.0",
+        "port": 80,
+        "publicUrl": "@@OPEN_PUBLICURL",
+        "ssr": "@@OPEN_SSR"
+    },
     "api": {
         "host": "0.0.0.0",
         "port": 80,
@@ -81,6 +93,11 @@
         "host": "0.0.0.0",
         "port": 80,
         "publicUrl": "@@CRONRUNNER_PUBLICURL"
+    },
+    "banchoBot": {
+        "host": "0.0.0.0",
+        "port": 80,
+        "publicUrl": "@@BANCHOBOT_PUBLICURL"
     },
     "s3": {
         "clients": {
@@ -95,11 +112,20 @@
         "buckets": {
             "mappacks": {
                 "publicUrl": "https://mappacks.corsace.io"
+            },
+            "teamAvatars": {
+                "publicUrl": "https://tournament-team-avatars.corsace.io"
             }
         }
     },
     "interOpAuth": {
         "username": "interop",
         "password": "@@INTEROP_PASSWORD"
+    },
+    "centrifugo": {
+        "apiUrl": "http://centrifugo:9000/api",
+        "publicUrl": "wss://centrifugo.corsace.io",
+        "apiKey": "@@CENTRIFUGO_API_KEY",
+        "ipWhitelist": ["10.*.*.*"]
     }
 }

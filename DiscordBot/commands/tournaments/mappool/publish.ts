@@ -1,19 +1,17 @@
 import { ChatInputCommandInteraction, Message, SlashCommandBuilder } from "discord.js";
-import { TournamentRoleType } from "../../../../Models/tournaments/tournamentRole";
 import { Command } from "../../index";
 import { loginResponse } from "../../../functions/loginResponse";
-import { buckets } from "../../../../Server/s3";
-import { gets3Key } from "../../../../Server/utils/s3";
-import { createPack, deletePack } from "../../../functions/tournamentFunctions/mappackFunctions";
+import { createPack, deletePack } from "../../../../Server/functions/tournaments/mappool/mappackFunctions";
 import { extractParameter } from "../../../functions/parameterFunctions";
 import { securityChecks } from "../../../functions/tournamentFunctions/securityChecks";
 import { unFinishedTournaments } from "../../../../Models/tournaments/tournament";
 import mappoolComponents from "../../../functions/tournamentFunctions/mappoolComponents";
 import confirmCommand from "../../../functions/confirmCommand";
 import mappoolLog from "../../../functions/tournamentFunctions/mappoolLog";
-import getUser from "../../../functions/dbFunctions/getUser";
+import getUser from "../../../../Server/functions/get/getUser";
 import commandUser from "../../../functions/commandUser";
 import respond from "../../../functions/respond";
+import { TournamentRoleType } from "../../../../Interfaces/tournament";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
@@ -46,21 +44,18 @@ async function run (m: Message | ChatInputCommandInteraction) {
     if (!mappool.isPublic && stage!.timespan.start.getTime() - Date.now() > 1000 * 60 * 60 * 24 * 7) {
         const confirm = await confirmCommand(m, "This mappool is more than a week away from the stage's start date u sure u wanna publish it?");
         if (!confirm) {
-            await respond(m, "Ok Lol .");
+            await respond(m, "Ok Lol . stopped mappool publish");
             return;
         }
     } 
-    if (!mappool.isPublic && mappool.slots.some(slot => slot.maps.some(map => !map.beatmap && !map.customBeatmap))) {
-        const confirm = await confirmCommand(m, "This mappool still contains empty slots u sure u wanna publish it?");
-        if (!confirm) {
-            await respond(m, "Ok Lol .");
-            return;
-        }
+    if (!mappool.isPublic && mappool.slots.some(slot => slot.maps.some(map => !map.beatmap))) {
+        await respond(m, "The mappool still contains unfinished customs/empty slots add all uploaded maps first");
+        return;
     }
     if (mappool.isPublic && stage!.timespan.start.getTime() < Date.now()) {
         const confirm = await confirmCommand(m, "This mappool's stage already started u sure u wanna privatize it?");
         if (!confirm) {
-            await respond(m, "Ok Lol .");
+            await respond(m, "Ok Lol . stopped mappool unpublishing");
             return;
         }
     }
@@ -81,29 +76,15 @@ async function run (m: Message | ChatInputCommandInteraction) {
     
     if (m instanceof Message) await m.react("⏳");
 
-    const s3Key = gets3Key("mappacksTemp", mappool);
-    if (mappool.mappackLink && (mappool.mappackExpiry?.getTime() ?? -1) > Date.now() && s3Key) {
-        // Copy mappack from temp to public
-        try {
-            await buckets.mappacks.copyObject(s3Key, buckets.mappacksTemp, s3Key, "application/zip");
-            await buckets.mappacksTemp.deleteObject(s3Key);
-        
-            mappool.mappackLink = await buckets.mappacks.getPublicUrl(s3Key);
-        } catch (err) {
-            await respond(m, "Something died while copying the mappack. Contact VINXIS");
-            console.log(err);
-            return;
-        }
-    } else {
-        const url = await createPack(m, "mappacks", mappool, `${tournament.abbreviation.toUpperCase()}_${mappool.abbreviation.toUpperCase()}`);
-        if (!url) {
-            await respond(m, "Something died while creating the mappack and retrieving its URL. Contact VINXIS");
-            return;
-        }
+    await deletePack("mappacksTemp", mappool);
 
-        mappool.mappackLink = url;
+    const url = await createPack(m, "mappacks", mappool, `${tournament.abbreviation.toUpperCase()}_${mappool.abbreviation.toUpperCase()}`);
+    if (!url) {
+        await respond(m, "Something died while creating the mappack and retrieving its URL. Contact VINXIS");
+        return;
     }
-    
+
+    mappool.mappackLink = url;
     mappool.mappackExpiry = null;
     mappool.isPublic = true;
     await mappool.save();
@@ -122,6 +103,10 @@ const data = new SlashCommandBuilder()
         option.setName("pool")
             .setDescription("The mappool to publish/private")
             .setRequired(true))
+    .addAttachmentOption(option =>
+        option.setName("mappack")
+            .setDescription("The mappack to upload")
+            .setRequired(false))
     .setDMPermission(false);  
 
 const mappoolPublish: Command = {

@@ -2,11 +2,12 @@
     <div class="search-bar">
         <div 
             class="search"
-            :class="`search--${viewTheme}`"
+            :class="`search--${viewTheme} search--${site}` "
         >
             <div class="search__pre">
                 <svg
                     class="search__pre-image"
+                    :class="`search__pre-image--${site}`"
                     xmlns="http://www.w3.org/2000/svg"
                     fill="currentColor"
                     viewBox="0 0 16 16"
@@ -18,10 +19,10 @@
                 class="search__input"
                 :class="[
                     { 'search__input--disabled': disabled },
-                    `search--${viewTheme}`
+                    `search--${viewTheme} search__input--${site}`
                 ]"
                 :disabled="disabled"
-                :placeholder="placeholder"
+                :placeholder="placeholderVal"
                 maxlength="50"
                 @input="updateText($event)"
             >
@@ -37,7 +38,7 @@
 </template>
 
 <script lang="ts">
-import { Vue, Component, Prop } from "vue-property-decorator";
+import { Vue, Component, Prop, PropSync } from "vue-property-decorator";
 import _ from "lodash";
 import { State } from "vuex-class";
 
@@ -48,8 +49,9 @@ export default class SearchBar extends Vue {
     // this is necessary if it is possible for the SearchBar's slot to be empty 
 
     @State viewTheme!: "light" | "dark";
+    @State site!: string;
 
-    @Prop({ type: String, required: true }) readonly placeholder!: string;
+    @PropSync("placeholder", { type: String, required: true }) readonly placeholderVal!: string;
     @Prop({ type: Boolean, default: false }) readonly disabled!: boolean;
 
     showActions = false;
@@ -97,7 +99,17 @@ export default class SearchBar extends Vue {
     min-width: 9rem; // any less and magnifying glass exits container
     color: $blue;
     padding: 7px 0;
-    border: 2px solid $blue;
+    
+    &--mca-ayim {
+        border: 2px solid $blue;
+    }
+
+    &--open {
+        border: 2px solid #696969;
+        &:focus-within {
+            border: 2px solid $open-red;
+        }
+    }
 
     &--light {
         background-color: white;
@@ -128,13 +140,19 @@ export default class SearchBar extends Vue {
                 height: 15px;
             }
             background-size: 1rem 1rem;
-            color: $blue;
             font-size: $font-xl;
+
+            &--mca-ayim {
+                color: $blue;
+            }
+
+            &--open {
+                color: $open-red;
+            }
         }
     }
 
     &__input {
-        color: $blue;
         font-family: "Futura PT", sans-serif;
         flex: 1;
         font-size: $font-base;
@@ -160,8 +178,25 @@ export default class SearchBar extends Vue {
         }
 
         &::placeholder, &:placeholder-shown {
-            color: $blue;
             font-style: italic;
+        }
+
+        &--mca-ayim { 
+            color: $blue;
+            &::placeholder, &:placeholder-shown {
+                color: $blue;
+            }
+        }
+
+        &--open {
+            color: $white;
+            font-family: $font-ggsans;
+            font-style: italic;
+            font-weight: 500;
+
+            &::placeholder, &:placeholder-shown {
+                color: $white;
+            }
         }
 
         &--disabled {

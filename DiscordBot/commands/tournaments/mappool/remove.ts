@@ -1,11 +1,9 @@
 import { ChatInputCommandInteraction, Message, SlashCommandBuilder, ThreadChannel } from "discord.js";
 import { Command } from "../../index";
-import { TournamentChannelType } from "../../../../Models/tournaments/tournamentChannel";
-import { TournamentRoleType } from "../../../../Models/tournaments/tournamentRole";
 import { loginResponse } from "../../../functions/loginResponse";
 import { CustomBeatmap } from "../../../../Models/tournaments/mappools/customBeatmap";
 import { discordClient } from "../../../../Server/discord";
-import { deletePack } from "../../../functions/tournamentFunctions/mappackFunctions";
+import { deletePack } from "../../../../Server/functions/tournaments/mappool/mappackFunctions";
 import { securityChecks } from "../../../functions/tournamentFunctions/securityChecks";
 import { extractParameters } from "../../../functions/parameterFunctions";
 import { postProcessSlotOrder } from "../../../functions/tournamentFunctions/parameterPostProcessFunctions";
@@ -13,7 +11,7 @@ import { extractTargetText } from "../../../functions/tournamentFunctions/parama
 import { Tournament, unFinishedTournaments } from "../../../../Models/tournaments/tournament";
 import { Mappool } from "../../../../Models/tournaments/mappools/mappool";
 import { User } from "../../../../Models/user";
-import getUser from "../../../functions/dbFunctions/getUser";
+import getUser from "../../../../Server/functions/get/getUser";
 import commandUser from "../../../functions/commandUser";
 import respond from "../../../functions/respond";
 import mappoolLog from "../../../functions/tournamentFunctions/mappoolLog";
@@ -22,6 +20,7 @@ import confirmCommand from "../../../functions/confirmCommand";
 import mappoolComponents from "../../../functions/tournamentFunctions/mappoolComponents";
 import { MappoolMap } from "../../../../Models/tournaments/mappools/mappoolMap";
 import channelID from "../../../functions/channelID";
+import { TournamentRoleType, TournamentChannelType } from "../../../../Interfaces/tournament";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
@@ -169,7 +168,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
     const confirm = await confirmCommand(m, "U sure u wanna remove **ALL** beatmaps, custom beatmaps and mappers from this mappool?\n**This action CANNOT be undone**");
     if (!confirm) {
-        await respond(m, "Ok Lol");
+        await respond(m, "Ok Lol . stopped mappool remove");
         return;
     }
 

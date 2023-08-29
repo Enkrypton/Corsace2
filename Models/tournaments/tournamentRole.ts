@@ -1,20 +1,7 @@
 import { BaseEntity, Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn } from "typeorm";
 import { Tournament } from "./tournament";
 import { User } from "../user";
-
-export enum TournamentRoleType {
-    Organizer,
-    Participants,
-    Managers,
-    Mappoolers,
-    Mappers,
-    Testplayers,
-    Referees,
-    Streamers,
-    Commentators,
-    Staff,
-}
-
+import { TournamentRoleType } from "../../Interfaces/tournament";
 @Entity()
 export class TournamentRole extends BaseEntity {
 
@@ -35,5 +22,4 @@ export class TournamentRole extends BaseEntity {
 
     @Column({ type: "enum", enum: TournamentRoleType })
         roleType!: TournamentRoleType;
-
 }

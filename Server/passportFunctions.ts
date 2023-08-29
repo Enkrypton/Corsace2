@@ -36,7 +36,7 @@ export function setupPassport () {
 
     passport.use(new OAuth2Strategy({
         authorizationURL: "https://osu.ppy.sh/oauth/authorize",
-        tokenURL: "https://osu.ppy.sh/oauth/token",
+        tokenURL: `${config.osu.proxyBaseUrl || "https://osu.ppy.sh"}/oauth/token`,
         clientID: config.osu.v2.clientId,
         clientSecret: config.osu.v2.clientSecret,
         callbackURL: `${config.corsace.publicUrl}/api/login/osu/callback`,
@@ -78,11 +78,11 @@ export async function discordPassport (accessToken: string, refreshToken: string
 
 export async function osuPassport (accessToken: string, refreshToken: string, profile: any, done: OAuth2Strategy.VerifyCallback): Promise<void> {
     try {
-        const userProfile = await osuV2Client.getUserInfo(accessToken);
+        const userProfile = await osuV2Client.getMe(accessToken);
         let user = await User.findOne({
             where: {
                 osu: {
-                    userID: userProfile.id,
+                    userID: userProfile.id.toString(),
                 },
             },
         });
@@ -109,7 +109,7 @@ export async function osuPassport (accessToken: string, refreshToken: string, pr
         }
 
         user.country = userProfile.country_code;
-        user.osu.userID = userProfile.id;
+        user.osu.userID = userProfile.id.toString();
         user.osu.username = userProfile.username;
         user.osu.avatar = userProfile.avatar_url;
         user.osu.accessToken = accessToken;

@@ -1,19 +1,18 @@
 import { Message, EmbedBuilder, SlashCommandBuilder, ChatInputCommandInteraction, ChannelType, TextChannel } from "discord.js";
 import { Command } from "../../index";
-import { TournamentRoleType } from "../../../../Models/tournaments/tournamentRole";
-import { TournamentChannelType } from "../../../../Models/tournaments/tournamentChannel";
 import { MappoolSlot } from "../../../../Models/tournaments/mappools/mappoolSlot";
 import { Brackets } from "typeorm";
 import { loginResponse } from "../../../functions/loginResponse";
 import { securityChecks } from "../../../functions/tournamentFunctions/securityChecks";
 import { extractParameters } from "../../../functions/parameterFunctions";
 import { extractTargetText } from "../../../functions/tournamentFunctions/paramaterExtractionFunctions";
-import getUser from "../../../functions/dbFunctions/getUser";
+import getUser from "../../../../Server/functions/get/getUser";
 import commandUser from "../../../functions/commandUser";
 import respond from "../../../functions/respond";
 import getStaff from "../../../functions/tournamentFunctions/getStaff";
 import getTournament from "../../../functions/tournamentFunctions/getTournament";
 import { discordStringTimestamp } from "../../../../Server/utils/dateParse";
+import { TournamentRoleType, TournamentChannelType } from "../../../../Interfaces/tournament";
 
 async function assignmentListDM (m: Message | ChatInputCommandInteraction) {
     // Check if they had -incfin in their text, or if they said true for the include_finished option in the slash command
@@ -35,7 +34,7 @@ async function assignmentListDM (m: Message | ChatInputCommandInteraction) {
         .leftJoinAndSelect("maps.beatmap", "beatmap")
         .leftJoinAndSelect("maps.customMappers", "customMapper")
         .leftJoinAndSelect("maps.testplayers", "testplayer")
-        .where(all ? "1 = 1" : "tournament.status != 3")
+        .where(all ? "1 = 1" : "tournament.status != '3'")
         .andWhere(new Brackets(qb => {
             qb.where("customMapper.ID = :user")
                 .orWhere("testplayer.ID = :user");
@@ -191,7 +190,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
         if (embed.data.fields!.length === 0)
             embed.addFields({ name: "No Maps Found", value: "No maps found with the given parameters GJ ."});
         
-        await replied ? respond(m, undefined, [embed]) : m.channel?.send({ embeds: [embed] });
+        replied ? await respond(m, undefined, [embed]) : await m.channel?.send({ embeds: [embed] });
     }
 
 }

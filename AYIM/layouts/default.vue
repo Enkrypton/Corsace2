@@ -1,15 +1,19 @@
 <template>
-    <div class="layout layout--mca">
-        <the-header 
-            :site="'ayim'"
+    <div class="layout layout--mca-ayim">
+        <DevBanner 
+            v-if="devBanner"
+            @close="devBanner = false"
+        />
+        <the-header
             class="mcaayim__header"
         >   
             <a 
                 :href="`/${$route.params.year}`"
                 @click="updateSelectedMode('')"
             >
+                <!-- TODO: Remove year -->
                 <img
-                    :src="require(`../../Assets/img/site/mca-ayim/year/${$route.params.year}-${viewTheme}-ayim.png`)"
+                    :src="require(`../../Assets/img/site/mca-ayim/year/${$route.params.year || 2022}-${viewTheme}-ayim.png`)"
                     class="mcaayim__logo"
                     :class="`mcaayim__logo--${viewTheme}`"
                 >
@@ -27,70 +31,97 @@
         />
         
         <the-footer class="mcaayim__footer">
-            <a 
-                class="footer-nav__brand-name" 
-                :class="`footer-nav__brand-name--${viewTheme}`"
-                href="https://corsace.io"
-            >
-                <img
-                    class="corsace__icon"
-                    src="../../Assets/img/site/mca-ayim/corsace_text.png"
-                    alt=""
-                >
-            </a>
-            <div 
-                class="socials"
-                :class="`socials--${viewTheme}`"
-            >
-                <a
-                    class="socials__link"
-                    href="https://twitter.com/corsace_"
-                    target="_blank"
-                >
-                    <img
-                        class="socials__icon"
-                        src="../../Assets/img/social/twitter.png"
-                        alt=""
-                    >
-                </a>
-                <a
-                    class="socials__link"
-                    href="https://discord.gg/Z6vEMsr"
-                    target="_blank"
-                >
-                    <img
-                        class="socials__icon"
-                        src="../../Assets/img/social/discord.png"
-                        alt=""
-                    >
-                </a>
-                <a
-                    class="socials__link"
-                    href="https://www.twitch.tv/corsace"
-                    target="_blank"
-                >
-                    <img
-                        class="socials__icon"
-                        src="../../Assets/img/social/twitch.png"
-                        alt=""
-                    >
-                </a>
-                <a
-                    class="socials__link"
-                    href="https://youtube.com/corsace"
-                    target="_blank"
-                >
-                    <img
-                        class="socials__icon"
-                        src="../../Assets/img/social/youtube.png"
-                        alt=""
-                    >
-                </a>
+            <div class="socials">
+                <Tooltip>
+                    <template #icon>
+                        <a 
+                            class="socials__link" 
+                            href="https://corsace.io"
+                            target="_blank"
+                        >
+                            <img
+                                class="socials__icon"
+                                :class="`socials__icon--${viewTheme}`"
+                                src="../../Assets/img/corsace.png"
+                                alt=""
+                            >
+                        </a>
+                    </template>
+                    CORSACE
+                </Tooltip>
+                <Tooltip>
+                    <template #icon>
+                        <a
+                            class="socials__link"
+                            href="https://twitter.com/corsace_"
+                            target="_blank"
+                        >
+                            <img
+                                class="socials__icon"
+                                :class="`socials__icon--${viewTheme}`"
+                                src="../../Assets/img/social/twitter.png"
+                                alt=""
+                            >
+                        </a>
+                    </template>
+                    TWITTER
+                </Tooltip>
+                <Tooltip>
+                    <template #icon>
+                        <a
+                            class="socials__link"
+                            href="https://discord.gg/Z6vEMsr"
+                            target="_blank"
+                        >
+                            <img
+                                class="socials__icon"
+                                :class="`socials__icon--${viewTheme}`"
+                                src="../../Assets/img/social/discord.png"
+                                alt=""
+                            >
+                        </a>
+                    </template>
+                    DISCORD
+                </Tooltip>
+                <Tooltip>
+                    <template #icon>
+                        <a
+                            class="socials__link"
+                            href="https://www.twitch.tv/corsace"
+                            target="_blank"
+                        >
+                            <img
+                                class="socials__icon"
+                                :class="`socials__icon--${viewTheme}`"
+                                src="../../Assets/img/social/twitch.png"
+                                alt=""
+                            >
+                        </a>
+                    </template>
+                    TWITCH
+                </Tooltip>
+                <Tooltip>
+                    <template #icon>
+                        <a
+                            class="socials__link"
+                            href="https://youtube.com/corsace"
+                            target="_blank"
+                        >
+                            <img
+                                class="socials__icon"
+                                :class="`socials__icon--${viewTheme}`"
+                                src="../../Assets/img/social/youtube.png"
+                                alt=""
+                            >
+                        </a>
+                    </template>
+                    YOUTUBE
+                </Tooltip>
             </div>
-            <year-switcher 	
-                v-if="!isSmall"	
-            />	
-        </the-footer>	
+            <year-switcher 
+                v-if="!isSmall"
+            />
+        </the-footer>
         <year-switcher 	
             v-if="isSmall"	
         />
@@ -104,6 +135,7 @@
 import { Vue, Component } from "vue-property-decorator";
 import { State, namespace } from "vuex-class";
 
+import DevBanner from "../../Assets/components/DevBanner.vue";
 import TheHeader from "../../Assets/components/header/TheHeader.vue";
 import ModeSwitcher from "../../Assets/components/mca-ayim/ModeSwitcher.vue";
 import YearSwitcher from "../../Assets/components/mca-ayim/YearSwitcher.vue";
@@ -116,6 +148,7 @@ const mcaAyimModule = namespace("mca-ayim");
 
 @Component({
     components: {
+        DevBanner,
         TheHeader,
         ModeSwitcher,
         YearSwitcher,
@@ -132,6 +165,7 @@ export default class Default extends Vue {
 
     @mcaAyimModule.Action updateSelectedMode;
     
+    devBanner = true;
     isSmall = false;	
     
     async mounted () {	
@@ -143,7 +177,7 @@ export default class Default extends Vue {
         }
 
         await Promise.all([
-            this.$store.dispatch("setViewTheme"),
+            this.$store.dispatch("setViewTheme", "light"),
             this.$store.dispatch("mca-ayim/setSelectedMode"),
         ]);
     }

@@ -1,8 +1,8 @@
 import "reflect-metadata";
 import { config } from "node-config-ts";
-import Koa from "koa";
+import baseServer from "./baseServer";
 import koaCash from "koa-cash";
-import BodyParser from "koa-bodyparser";
+import koaBody from "koa-body";
 import Mount from "koa-mount";
 import passport from "koa-passport";
 import Session from "koa-session";
@@ -11,11 +11,12 @@ import { setupPassport } from "./passportFunctions";
 
 import osuURIRouter from "./api/routes/osuuri";
 
+import centrifugoRouter from "./api/routes/centrifugo";
+
 import logoutRouter from "./api/routes/login/logout";
 import discordRouter from "./api/routes/login/discord";
 import osuRouter from "./api/routes/login/osu";
 import userRouter from "./api/routes/user";
-import helloWorldRouter from "./api/routes/helloWorld";
 
 import mcaRouter from "./api/routes/mca";
 import adminRouter from "./api/routes/admin";
@@ -40,12 +41,28 @@ import recordsRouter from "./api/routes/records";
 import statisticsRouter from "./api/routes/statistics";
 import mappersRouter from "./api/routes/mappers";
 
+import tournamentRouter from "./api/routes/tournament";
+
+import stageRouter from "./api/routes/stage";
+
+import mappoolRouter from "./api/routes/mappool";
+import mappoolMapRouter from "./api/routes/mappool/map";
+
+import qualifierRouter from "./api/routes/qualifier";
+import matchupRouter from "./api/routes/matchup";
+
+import refereeMatchupsRouter from "./api/routes/referee/matchups";
+import refereeBanchoRouter from "./api/routes/referee/bancho";
+
+import teamRouter from "./api/routes/team";
+import inviteRouter from "./api/routes/team/invite";
+
 import ormConfig from "../ormconfig";
+import serve from "koa-static";
+import path from "path";
 
-const koa = new Koa;
+const koa = baseServer;
 
-koa.keys = config.koaKeys;
-koa.proxy = true;
 koa.use(Session({
     domain: config.cookiesDomain,
     secure: process.env.NODE_ENV !== "development",
@@ -53,7 +70,14 @@ koa.use(Session({
     renew: true,
     maxAge: 60 * 24 * 60 * 60 * 1000, // 2 months
 }, koa));
-koa.use(BodyParser());
+koa.use(koaBody({ 
+    patchKoa: true,
+    multipart: true,
+    formidable: {
+        maxFileSize: 5 * 1024 * 1024, // 5MB
+        maxFields: 1,
+    },
+}));
 koa.use(passport.initialize());
 koa.use(passport.session());
 
@@ -71,35 +95,14 @@ koa.use(koaCash({
     },
 }));
 
-// Error handler
-koa.use(async (ctx, next) => {
-    try {
-        if (ctx.originalUrl !== "/favicon.ico" && process.env.NODE_ENV === "development") {
-            console.log("\x1b[33m%s\x1b[0m", ctx.originalUrl);
-        }
-
-        await next();
-    } catch (err: any) {
-        ctx.status = err.status || 500;
-
-        if (ctx.status >= 500) {
-            ctx.body = { 
-                error: "Something went wrong!",
-                status: ctx.status,
-            };            
-            console.log(err);
-            return;
-        }
-
-        ctx.body = { 
-            error: err.message,
-            status: ctx.status,
-        };
-    }
-});
+// Public
+koa.use(Mount("/public", serve(path.join(__dirname, "../public"))));
 
 // General
 koa.use(Mount("/api/osuuri", osuURIRouter.routes()));
+
+/// Centrifugo
+koa.use(Mount("/api/centrifugo", centrifugoRouter.routes()));
 
 /// Login
 koa.use(Mount("/api/login/discord", discordRouter.routes()));
@@ -137,9 +140,28 @@ koa.use(Mount("/api/mappers", mappersRouter.routes()));
 koa.use(Mount("/api/comments", commentsRouter.routes()));
 koa.use(Mount("/api/influences", influencesRouter.routes()));
 
-// Hello World!
-koa.use(Mount("/", helloWorldRouter.routes()));
-koa.use(Mount("/api", helloWorldRouter.routes()));
+// Tournaments
+/// Tournament
+koa.use(Mount("/api/tournament", tournamentRouter.routes()));
+
+/// Stage
+koa.use(Mount("/api/stage", stageRouter.routes()));
+
+/// Mappool
+koa.use(Mount("/api/mappool", mappoolRouter.routes()));
+koa.use(Mount("/api/mappool/map", mappoolMapRouter.routes()));
+
+/// Team
+koa.use(Mount("/api/team", teamRouter.routes()));
+koa.use(Mount("/api/team/invite", inviteRouter.routes()));
+
+/// Matchup
+koa.use(Mount("/api/qualifier", qualifierRouter.routes()));
+koa.use(Mount("/api/matchup", matchupRouter.routes()));
+
+/// Referee
+koa.use(Mount("/api/referee/matchups", refereeMatchupsRouter.routes()));
+koa.use(Mount("/api/referee/bancho", refereeBanchoRouter.routes()));
 
 ormConfig.initialize()
     .then(async (connection) => {

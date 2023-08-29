@@ -3,8 +3,7 @@ import { Command } from "../../index";
 import respond from "../../../functions/respond";
 import { extractParameter } from "../../../functions/parameterFunctions";
 import { securityChecks } from "../../../functions/tournamentFunctions/securityChecks";
-import { TournamentRoleType } from "../../../../Models/tournaments/tournamentRole";
-import getUser from "../../../functions/dbFunctions/getUser";
+import getUser from "../../../../Server/functions/get/getUser";
 import commandUser from "../../../functions/commandUser";
 import { loginResponse } from "../../../functions/loginResponse";
 import mappoolComponents from "../../../functions/tournamentFunctions/mappoolComponents";
@@ -16,7 +15,8 @@ import mappoolLog from "../../../functions/tournamentFunctions/mappoolLog";
 import { User } from "../../../../Models/user";
 import getCustomThread from "../../../functions/tournamentFunctions/getCustomThread";
 import { discordClient } from "../../../../Server/discord";
-import { profanityFilter } from "../../../../Interfaces/comment";
+import { profanityFilterStrong } from "../../../../Interfaces/comment";
+import { TournamentRoleType } from "../../../../Interfaces/tournament";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
@@ -89,7 +89,7 @@ async function mappoolName (m: Message, mappool: Mappool, tournament: Tournament
             await mappoolName(m, mappool, tournament, existingMappools, userID, user);
             return;
         }
-        if (profanityFilter.test(name)) {
+        if (profanityFilterStrong.test(name)) {
             const reply = await m.channel.send("This name is sus . Choose a better name .");
             setTimeout(async () => (await reply.delete()), 5000);
             await mappoolName(m, mappool, tournament, existingMappools, userID, user);
@@ -120,7 +120,7 @@ async function mappoolAbbreviation (m: Message, mappool: Mappool, tournament: To
             await mappoolAbbreviation(m, mappool, tournament, existingMappools, userID, user);
             return;
         }
-        if (profanityFilter.test(abbreviation)) {
+        if (profanityFilterStrong.test(abbreviation)) {
             const reply = await m.channel.send("This abbreviation is sus . Choose a better abbreviation .");
             setTimeout(async () => (await reply.delete()), 5000);
             await mappoolAbbreviation(m, mappool, tournament, existingMappools, userID, user);
@@ -169,7 +169,7 @@ async function mappoolSave (m: Message, mappool: Mappool, tournament: Tournament
                 };
             }))
         .setTimestamp(new Date)
-        .setAuthor({ name: commandUser(m).tag, iconURL: (m.member as GuildMember | null)?.displayAvatarURL() || undefined });
+        .setAuthor({ name: commandUser(m).username, iconURL: (m.member as GuildMember | null)?.displayAvatarURL() || undefined });
 
     await Promise.all([
         m.channel!.send({ embeds: [embed] }),

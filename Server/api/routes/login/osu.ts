@@ -8,6 +8,10 @@ import { UsernameChange } from "../../../../Models/usernameChange";
 import { redirectToMainDomain } from "./middleware";
 import { osuV2Client } from "../../../osu";
 import { isPossessive } from "../../../../Models/MCA_AYIM/guestRequest";
+import { scopes } from "../../../../Interfaces/osuAPIV2";
+import { parseQueryParam } from "../../../utils/query";
+import { ModeDivisionType } from "../../../../Models/MCA_AYIM/modeDivision";
+import { UserStatistics } from "../../../../Models/userStatistics";
 
 // If you are looking for osu! passport info then go to Server > passportFunctions.ts
 
@@ -20,16 +24,18 @@ const modes = [
 ];
 
 osuRouter.get("/", redirectToMainDomain, async (ctx: ParameterizedContext<any>, next) => {
-    const site = Array.isArray(ctx.query.site) ? ctx.query.site[0] : ctx.query.site;
-    if (!site)
-        throw new Error("No site specified");
+    const site = parseQueryParam(ctx.query.site);
+    if (!site) {
+        ctx.body = "No site specified";
+        return;
+    }
 
     const baseURL = ctx.query.site ? (config[site] ? config[site].publicUrl : config.corsace.publicUrl) : "";
     const params = ctx.query.redirect ?? "";
     const redirectURL = baseURL + params ?? "back";
     ctx.cookies.set("redirect", redirectURL, { overwrite: true });
     await next();
-}, passport.authenticate("oauth2", { scope: ["identify", "public", "friends.read"] }));
+}, passport.authenticate("oauth2", { scope: scopes }));
 
 osuRouter.get("/callback", async (ctx: ParameterizedContext<any>, next) => {
     return await passport.authenticate("oauth2", { scope: ["identify", "public", "friends.read"], failureRedirect: "/" }, async (err, user) => {
@@ -47,10 +53,21 @@ osuRouter.get("/callback", async (ctx: ParameterizedContext<any>, next) => {
 }, async (ctx, next) => {
     try {
         // api v2 data
-        const data = await osuV2Client.getUserInfo(ctx.state.user.osu.accessToken);
+        const data = await osuV2Client.getMe(ctx.state.user.osu.accessToken);
+
+        // User Statistics
+        ctx.state.user.userStatistics = await UserStatistics
+            .createQueryBuilder("userStatistics")
+            .innerJoinAndSelect("userStatistics.user", "user")
+            .innerJoinAndSelect("userStatistics.modeDivision", "mode")
+            .where("user.ID = :ID", { ID: ctx.state.user.ID })
+            .getMany();
+        await Promise.all(Object.values(ModeDivisionType)
+            .filter(mode => typeof mode !== "string")
+            .map(modeID => ctx.state.user.refreshStatistics(modeID, data)));
 
         // Username changes
-        const usernames: string[] = data.previous_usernames;
+        const usernames: string[] = data.previous_usernames || [];
         for (const name of usernames) {
             let nameChange = await UsernameChange.findOne({ 
                 where: { 
@@ -81,7 +98,7 @@ osuRouter.get("/callback", async (ctx: ParameterizedContext<any>, next) => {
             await currentName.remove();
 
         // Check if BN/NAT/DEV/SPT/PPY
-        if (data.groups.some(group => [11, 22, 33, 28, 32, 7, 31].some(num => group.id === num))) {
+        if (data.groups?.some(group => [11, 22, 33, 28, 32, 7, 31].some(num => group.id === num))) {
             let eligibleModes: string[] = [];
             if (data.groups.some(group => [11, 22, 33].some(num => group.id === num))) // DEV, SPT, PPY groups
                 eligibleModes = ["standard", "taiko", "fruits", "mania"];
@@ -136,7 +153,10 @@ osuRouter.get("/callback", async (ctx: ParameterizedContext<any>, next) => {
 }, async ctx => {
     try {
         // MCA data
-        const beatmaps = (await Axios.get(`https://osu.ppy.sh/api/get_beatmaps?k=${config.osu.v1.apiKey}&u=${ctx.state.user.osu.userID}`)).data;
+        ctx.state.user.mcaEligibility = ctx.state.user.mcaEligibility || [];
+
+        // TODO: Move to appropriate service (with rate-limiter etc)
+        const beatmaps = (await Axios.get(`${config.osu.proxyBaseUrl || "https://osu.ppy.sh"}/api/get_beatmaps?k=${config.osu.v1.apiKey}&u=${ctx.state.user.osu.userID}`)).data;
         if (beatmaps.length != 0) {
             for (const beatmap of beatmaps) {
                 if (!isPossessive(beatmap.version) && (beatmap.approved == 2 || beatmap.approved == 1)) {

@@ -7,7 +7,7 @@ import { User as APIUser } from "nodesu";
 import { isCorsace } from "../../../../Server/middleware";
 import { OAuth, User } from "../../../../Models/user";
 import { MCAEligibility } from "../../../../Models/MCA_AYIM/mcaEligibility";
-import { osuClient } from "../../../../Server/osu";
+import { osuClient } from "../../../osu";
 
 const staffRouter = new Router;
 
@@ -40,7 +40,7 @@ staffRouter.get("/categories/:year", validatePhaseYear, async (ctx) => {
 });
 
 // Endpoint for granting direct MCA nom/vote access to users
-staffRouter.post("/grant/:year", isCorsace, validatePhaseYear, async (ctx) => {
+staffRouter.post("/grant/:year", isLoggedInDiscord, isCorsace, validatePhaseYear, async (ctx) => {
     if (!ctx.request.body.user)
         return ctx.body = { error: "No user ID given!" };
     if (!ctx.request.body.mode)

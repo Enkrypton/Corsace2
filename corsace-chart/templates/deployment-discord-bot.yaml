@@ -35,9 +35,10 @@ spec:
           image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
           imagePullPolicy: {{ $.Values.image.pullPolicy }}
           command:
-            - npm
-            - run
-            - discord-bot
+            - node
+            - --enable-source-maps
+            - dist/DiscordBot/index.js
+          workingDir: /src/DiscordBot
           resources:
             {{- toYaml $.Values.resources | nindent 12 }}
           env:

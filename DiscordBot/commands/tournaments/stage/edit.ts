@@ -3,15 +3,16 @@ import { Command } from "../../index";
 import respond from "../../../functions/respond";
 import channelID from "../../../functions/channelID";
 import { TournamentStatus } from "../../../../Models/tournaments/tournament";
-import getUser from "../../../functions/dbFunctions/getUser";
+import getUser from "../../../../Server/functions/get/getUser";
 import commandUser from "../../../functions/commandUser";
 import { loginResponse } from "../../../functions/loginResponse";
 import getTournament from "../../../functions/tournamentFunctions/getTournament";
 import getStage from "../../../functions/tournamentFunctions/getStage";
-import { ScoringMethod, Stage, StageType } from "../../../../Models/tournaments/stage";
+import { Stage } from "../../../../Models/tournaments/stage";
 import editProperty from "../../../functions/tournamentFunctions/editProperty";
-import { profanityFilter } from "../../../../Interfaces/comment";
+import { profanityFilterStrong } from "../../../../Interfaces/comment";
 import { discordStringTimestamp, parseDateOrTimestamp } from "../../../../Server/utils/dateParse";
+import { ScoringMethod, StageType } from "../../../../Interfaces/stage";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (!m.guild || !(m.member!.permissions as Readonly<PermissionsBitField>).has(PermissionFlagsBits.Administrator))
@@ -82,7 +83,7 @@ async function stageNameAbbreviation (m: Message, stage: Stage, existingStages: 
             return;
         }
 
-        if (profanityFilter.test(editValue)) {
+        if (profanityFilterStrong.test(editValue)) {
             const reply = await m.channel.send(`This ${property} is sus . Choose a better ${property} .`);
             setTimeout(async () => (await reply.delete()), 5000);
             await stageNameAbbreviation(m, stage, existingStages, userID, property);
@@ -236,8 +237,36 @@ async function stageTeamSize (m: Message, stage: Stage, userID: string, property
 
     if (property === "initialSize")
         await stageTeamSize(m, stage, userID, "finalSize", stage.finalSize);
+    else if (stage.stageType === StageType.Qualifiers)
+        await stageQualifierTeamChoose(m, stage, userID);
     else
         await stageSave(m, stage);
+}
+
+async function stageQualifierTeamChoose (m: Message, stage: Stage, userID: string) {
+    const chooseOrder = await editProperty(m, "qualifierTeamChooseOrder", "stage", `${stage.qualifierTeamChooseOrder || false}`, userID);
+    if (!chooseOrder)
+        return;
+
+    if (typeof chooseOrder === "string") {
+        if (
+            chooseOrder.toLowerCase() !== "true" && 
+            chooseOrder.toLowerCase() !== "yes" && 
+            chooseOrder.toLowerCase() !== "y" &&
+            chooseOrder.toLowerCase() !== "false" &&
+            chooseOrder.toLowerCase() !== "no" &&
+            chooseOrder.toLowerCase() !== "n"
+        ) {
+            const reply = await m.channel.send("Invalid choice. Use the following: `true`, `yes`, `y`, `false`, `no`, `n`");
+            setTimeout(async () => (await reply.delete()), 5000);
+            await stageQualifierTeamChoose(m, stage, userID);
+            return;
+        }
+
+        stage.qualifierTeamChooseOrder = chooseOrder.toLowerCase() === "true" || chooseOrder.toLowerCase() === "yes" || chooseOrder.toLowerCase() === "y";
+    }
+
+    await stageSave(m, stage);
 }
 
 async function stageSave (m: Message, stage: Stage) {
@@ -265,7 +294,10 @@ async function stageSave (m: Message, stage: Stage) {
             { name: "Initial → Final Team Count", value: stage.initialSize + " → " + stage.finalSize, inline: true }
         )
         .setTimestamp(new Date)
-        .setAuthor({ name: commandUser(m).tag, iconURL: (m.member as GuildMember | null)?.displayAvatarURL() || undefined });
+        .setAuthor({ name: commandUser(m).username, iconURL: (m.member as GuildMember | null)?.displayAvatarURL() || undefined });
+
+    if (stage.stageType === StageType.Qualifiers)
+        embed.addFields({ name: "Team Qualifier Choose Order", value: stage.qualifierTeamChooseOrder ? "Yes" : "No", inline: true });
 
     await m.channel.send({ embeds: [ embed ] });
 }
@@ -273,6 +305,7 @@ async function stageSave (m: Message, stage: Stage) {
 const data = new SlashCommandBuilder()
     .setName("stage_edit")
     .setDescription("Edit a stage.")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .setDMPermission(false);
 
 const stageEdit: Command = {

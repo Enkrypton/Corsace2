@@ -1,6 +1,5 @@
 {
     "flag": "",
-    "login": "",
     "mca_ayim": {
         "header": {
             "mca": "",
@@ -21,6 +20,10 @@
             "authOsuComp": "",
             "authDiscord": "",
             "authDiscordComp": ""
+        },
+        "banner": {
+            "merch": "",
+            "corsace": ""
         }
     },
     "ayim": {
@@ -32,7 +35,9 @@
             "numberwith": "",
             "message": {
                 "2019": "",
-                "2020": ""
+                "2020": "",
+                "2021": "",
+                "2022": ""
             }
         },
         "mapsets": {
@@ -110,7 +115,9 @@
             "statisticsLabel": "",
             "stage": {
                 "voting": "",
-                "nominating": ""
+                "nominating": "",
+                "preparation": "",
+                "stage": ""
             },
             "rankedSets": "",
             "nominateNow": "",
@@ -118,15 +125,22 @@
             "daysLeft": "",
             "message": {
                 "2019": "",
-                "2020": ""
+                "2020": "",
+                "2021": "",
+                "2022": ""
             },
             "categories": {
                 "map": "",
-                "user": ""
+                "user": "",
+                "index": ""
             },
             "organized": "",
             "preparation": "",
-            "viewResults": ""
+            "viewResults": "",
+            "banner": "",
+            "click": "",
+            "welcome": "",
+            "timeline": ""
         },
         "categories": {
             "grandAward": {
@@ -312,6 +326,50 @@
             "antiMetaCatch": {
                 "name": "",
                 "description": ""
+            },
+            "marathonMan": {
+                "name": "",
+                "description": ""
+            },
+            "longNotes4K": {
+                "name": "",
+                "description": ""
+            },
+            "longNotes7K": {
+                "name": "",
+                "description": ""
+            },
+            "rice": {
+                "name": "",
+                "description": ""
+            },
+            "rice4K": {
+                "name": "",
+                "description": ""
+            },
+            "rice7K": {
+                "name": "",
+                "description": ""
+            },
+            "hybrid4K": {
+                "name": "",
+                "description": ""
+            },
+            "hybrid7K": {
+                "name": "",
+                "description": ""
+            },
+            "mostInnovative": {
+                "name": "",
+                "description": ""
+            },
+            "unconventionalCtb": {
+                "name": "",
+                "description": ""
+            },
+            "diversity": {
+                "name": "",
+                "description": ""
             }
         },
         "nom_vote": {
@@ -357,12 +415,260 @@
             "resultsOverlay": ""
         }
     },
-    "main": {
-        "header": {
-            "login": "",
-            "register": "",
-            "changeDiscord": ""
+    "open": {
+        "navbar": {
+            "home": "",
+            "info": "",
+            "qualifiers": "",
+            "teams": "",
+            "schedule": "",
+            "mappool": "",
+            "staff": "",
+            "createTeam": "",
+            "invitations": "",
+            "loginDiscord": "",
+            "teamInvites": "",
+            "noInvites": ""
         },
+        "footer": {
+            "corsace": "",
+            "twitter": "",
+            "discord": "",
+            "twitch": "",
+            "youtube": ""
+        },
+        "stages": {
+            "qualifiers": "",
+            "round robin": "",
+            "runoff bracket": "",
+            "knockout 1": "",
+            "knockout 2": "",
+            "abbreviations": {
+                "ql": "",
+                "rr": "",
+                "ro": "",
+                "ko1": "",
+                "ko2": ""
+            }
+        },
+        "home": {
+            "description": "",
+            "timeline": "",
+            "presentedBy": "",
+            "registrations": "",
+            "button": {
+                "qualifiersMappool": "",
+                "mappoolDownload": "",
+                "register": "",
+                "registrationsEnd": ""
+            }
+        },
+        "info": {
+            "title": "",
+            "condensed": "",
+            "error": "",
+            "matchInfo": {
+                "matchSize": "",
+                "minPlayers": "",
+                "maxPlayers": "",
+                "pickTimer": "",
+                "readyTimer": "",
+                "order": "",
+                "scoringMethod": "",
+                "type": "",
+                "startDate": "",
+                "endDate": "",
+                "rounds": "",
+                "initialSize": "",
+                "finalSize": ""
+            },
+            "headings": {
+                "mappools": "",
+                "stage": ""
+            },
+            "status": {
+                "notStarted": "",
+                "complete": "",
+                "ongoing": ""
+            },
+            "mappools": {
+                "info": "",
+                "notAvailable": "",
+                "mappackDownload": "",
+                "mappacknotAvailable": ""
+            },
+            "donateToCorsace": "",
+            "supportViaSponsorship": "",
+            "generalInfo": "",
+            "teamStructure": "",
+            "qualifiersProcedures": "",
+            "tournamentStructure": "",
+            "infoGraphic": "",
+            "matchProcedures": "",
+            "reportTournament": "",
+            "subjectToChange": ""
+        },
+        "qualifiers": {
+            "nav": {
+                "mappool": "",
+                "qualifiers": "",
+                "scores": ""
+            },
+            "mappool": {
+                "sheets": "",
+                "mappool": "",
+                "banner": {
+                    "mapper": "",
+                    "difficulty": ""
+                },
+                "notAvailable": ""
+            },
+            "scores": {
+                "nav": {
+                    "sort": "",
+                    "average": "",
+                    "sum": "",
+                    "percentAvg": "",
+                    "relAvg": "",
+                    "percentMax": "",
+                    "relMax": "",
+                    "zScore": "",
+                    "placement": "",
+                    "player": "",
+                    "team": "",
+                    "best": "",
+                    "worst": ""
+                },
+                "category": "",
+                "select": "",
+                "players": "",
+                "teams": ""
+            },
+            "create": "",
+            "error": {
+                "message": "",
+                "pressToClose": ""
+            }
+        },
+        "teams": {
+            "teamsList": "",
+            "error": "",
+            "searchPlaceholder": "",
+            "editTeamInfo": "",
+            "qualifierId": "",
+            "placeholders": {
+                "searchUser": "",
+                "name": "",
+                "abbreviation": ""
+            },
+            "edit": {
+                "teamName": "",
+                "teamAbbreviation": "",
+                "timezone": "",
+                "teamAvatar": "",
+                "errors": {
+                    "size": "",
+                    "type": "",
+                    "invalidImage": "",
+                    "invalidTimezone": "",
+                    "errorAddingTeamAvatar": "",
+                    "invalidName": "",
+                    "contactVinxis": ""
+                },
+                "confirm": {
+                    "deleteTeam": "",
+                    "deleteTeamFinal": "",
+                    "removeMember": "",
+                    "transferManager": "",
+                    "invite": "",
+                    "removeInvite": "",
+                    "unregister": ""
+                },
+                "save": "",
+                "deleteTeam": ""
+            },
+            "headers": {
+                "tournaments": "",
+                "teamStats": "",
+                "teamManager": "",
+                "teamMembers": "",
+                "editTeamMembers": "",
+                "closeTeamMembers": "",
+                "becomeMember": "",
+                "becomeManager": "",
+                "teamInvites": "",
+                "editTeamInvites": "",
+                "closeTeamInvites": "",
+                "qualifier": "",
+                "requiredMessageExact": "",
+                "requiredMessageRange": ""
+            },
+            "registration": {
+                "noRegistration": "",
+                "toPlay": ""
+            },
+            "teamID": "",
+            "member": "",
+            "members": "",
+            "averageBWS": "",
+            "averageRank": "",
+            "averagePP": "",
+            "editQualifierTime": "",
+            "deleteTeam": "",
+            "createJoinQualifier": "",
+            "notRegistered": ""
+        },
+        "create": {
+            "title": "",
+            "info1": "",
+            "info2": "",
+            "teamName": "",
+            "teamLength": "",
+            "teamAcronym": "",
+            "acronymLength": "",
+            "teamTimezone": "",
+            "timezoneText": "",
+            "teamAvatar": "",
+            "upload": "",
+            "fileSizeLimit": "",
+            "fileSizeError": "",
+            "fileTypeError": "",
+            "preview": "",
+            "avatarInfo1": "",
+            "avatarInfo2": "",
+            "avatarInfo3": "",
+            "avatarInfo4": "",
+            "teamManagement": "",
+            "teamManagers": "",
+            "teamManagersFree": "",
+            "selectManager": "",
+            "confirmManager": "",
+            "create": ""
+        },
+        "components": {
+            "openCardTeam": {
+                "rank": "",
+                "teambwsAverage": "",
+                "unregistered": "",
+                "bws": ""
+            },
+            "stageSelector": {
+                "select": "",
+                "stage": ""
+            }
+        },
+        "staff": {
+            "title": "",
+            "notLoggedIn": ""
+        },
+        "status": {
+            "loading": ""
+        },
+        "mappool": {
+            "title": ""
+        }
+    },
+    "main": {
         "construction": {
             "underConstruction": "",
             "sorry": "",
@@ -373,5 +679,12 @@
             "code": "",
             "products": ""
         }
+    },
+    "header": {
+        "welcomeBack": "",
+        "login": "",
+        "register": "",
+        "changeDiscord": "",
+        "logout": ""
     }
 }

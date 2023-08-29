@@ -4,15 +4,19 @@ import { discordGuild } from "../../../discord";
 import { config } from "node-config-ts";
 import { ParameterizedContext } from "koa";
 import { redirectToMainDomain } from "./middleware";
+import { parseQueryParam } from "../../../utils/query";
+import { DiscordAPIError } from "discord.js";
 
 // If you are looking for discord passport info then go to Server > passportFunctions.ts
 
 const discordRouter = new Router();
 
 discordRouter.get("/", redirectToMainDomain, async (ctx: ParameterizedContext<any>, next) => {
-    const site = Array.isArray(ctx.query.site) ? ctx.query.site[0] : ctx.query.site;
-    if (!site)
-        throw new Error("No site specified");
+    const site = parseQueryParam(ctx.query.site);
+    if (!site) {
+        ctx.body = "No site specified";
+        return;
+    }
 
     const baseURL = ctx.query.site ? (config[site] ? config[site].publicUrl : config.corsace.publicUrl) : "";
     const params = ctx.query.redirect ?? "";
@@ -52,7 +56,8 @@ discordRouter.get("/callback", async (ctx: ParameterizedContext, next) => {
                     });
                 }
             } catch (err) {
-                console.log("An error occurred in adding a user to the server / changing their nickname: " + err);
+                if (!(err instanceof DiscordAPIError) || err.code !== 50007)
+                    console.log("An error occurred in adding a user to the server / changing their nickname: " + err);
             }
 
             ctx.login(user);

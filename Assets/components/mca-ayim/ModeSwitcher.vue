@@ -36,7 +36,7 @@
 import { Vue, Component, Prop } from "vue-property-decorator";
 import { State, namespace } from "vuex-class";
 
-import { Phase } from "../../../Interfaces/mca";
+import { MCAPhase } from "../../../Interfaces/mca";
 
 const mcaAyimModule = namespace("mca-ayim");
 
@@ -44,13 +44,13 @@ const mcaAyimModule = namespace("mca-ayim");
 export default class ModeSwitcher extends Vue {
 
     @Prop(Boolean) readonly enableModeEligibility!: boolean;
-    @Prop({ type: Array, default: () => [] }) readonly ignoreModes!: string[];
+    @Prop({ type: Array }) readonly ignoreModes?: string[];
 
     @State viewTheme!: "light" | "dark";
 
     @mcaAyimModule.State selectedMode!: string;
     @mcaAyimModule.State modes!: string[];
-    @mcaAyimModule.Getter phase!: Phase;
+    @mcaAyimModule.Getter phase!: MCAPhase;
     @mcaAyimModule.Getter isEligibleFor!: (mode: string) => boolean;
     @mcaAyimModule.Action updateSelectedMode;
 
@@ -64,7 +64,7 @@ export default class ModeSwitcher extends Vue {
     isSmall = false;
 
     get availableModes () {
-        return this.modes.filter(m => !this.ignoreModes.includes(m));
+        return this.modes.filter(m => !this.ignoreModes?.includes(m));
     }
 
     setMode (mode): void {

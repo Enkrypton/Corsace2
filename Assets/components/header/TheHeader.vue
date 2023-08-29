@@ -10,6 +10,7 @@
             class="header-login"
         >
             <div class="header-login__welcome-container">
+                <slot name="login" />
                 <img 
                     :src="avatarURL"
                     class="header-login__avatar"
@@ -104,7 +105,7 @@
 </template>
 
 <script lang="ts">
-import { Vue, Component, Prop } from "vue-property-decorator";
+import { Vue, Component } from "vue-property-decorator";
 import { State } from "vuex-class";
 
 import { UserInfo } from "../../../Interfaces/user";
@@ -112,9 +113,8 @@ import { UserInfo } from "../../../Interfaces/user";
 @Component
 export default class TheHeader extends Vue {
 
-    @Prop({ type: String, required: true }) readonly site!: string;
-
-    @State loggedInUser!: UserInfo;
+    @State site!: string;
+    @State loggedInUser!: null | UserInfo;
     @State viewTheme!: "light" | "dark";
 
     get avatarURL (): string  {
@@ -151,7 +151,7 @@ export default class TheHeader extends Vue {
     top: 0;
 
     width: 100%;
-    height: 70px;
+    height: 90px;
     @include breakpoint(mobile) {
         height: 55px;
     }
@@ -161,6 +161,7 @@ export default class TheHeader extends Vue {
 }
 
 .header-login {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
@@ -217,7 +218,7 @@ export default class TheHeader extends Vue {
         &--corsace {
             color: $pink;
         }
-        &--mca, &--ayim{
+        &--mca-ayim {
             color: $blue;
         }
         padding: 0 2.5px;

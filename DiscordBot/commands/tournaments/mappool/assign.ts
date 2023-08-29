@@ -1,17 +1,15 @@
 import { ChatInputCommandInteraction, ForumChannel, Message, SlashCommandBuilder, ThreadChannel } from "discord.js";
 import { Command } from "../../index";
 import { Tournament, unFinishedTournaments } from "../../../../Models/tournaments/tournament";
-import { TournamentRoleType } from "../../../../Models/tournaments/tournamentRole";
 import { Beatmap } from "../../../../Models/beatmap";
 import { Beatmap as APIBeatmap } from "nodesu";
 import { osuClient } from "../../../../Server/osu";
 import { insertBeatmap } from "../../../../Server/scripts/fetchYearMaps";
-import { TournamentChannelType } from "../../../../Models/tournaments/tournamentChannel";
 import { loginResponse } from "../../../functions/loginResponse";
 import { MappoolMapHistory } from "../../../../Models/tournaments/mappools/mappoolMapHistory";
 import { discordClient } from "../../../../Server/discord";
 import { MappoolMap } from "../../../../Models/tournaments/mappools/mappoolMap";
-import { deletePack } from "../../../functions/tournamentFunctions/mappackFunctions";
+import { deletePack } from "../../../../Server/functions/tournaments/mappool/mappackFunctions";
 import { extractParameters } from "../../../functions/parameterFunctions";
 import { extractTargetText } from "../../../functions/tournamentFunctions/paramaterExtractionFunctions";
 import { postProcessSlotOrder } from "../../../functions/tournamentFunctions/parameterPostProcessFunctions";
@@ -21,7 +19,7 @@ import { User } from "../../../../Models/user";
 import { JobPost } from "../../../../Models/tournaments/mappools/jobPost";
 import beatmapEmbed from "../../../functions/beatmapEmbed";
 import respond from "../../../functions/respond";
-import getUser from "../../../functions/dbFunctions/getUser";
+import getUser from "../../../../Server/functions/get/getUser";
 import channelID from "../../../functions/channelID";
 import commandUser from "../../../functions/commandUser";
 import mappoolLog from "../../../functions/tournamentFunctions/mappoolLog";
@@ -29,6 +27,7 @@ import mappoolComponents from "../../../functions/tournamentFunctions/mappoolCom
 import getStaff from "../../../functions/tournamentFunctions/getStaff";
 import getCustomThread from "../../../functions/tournamentFunctions/getCustomThread";
 import confirmCommand from "../../../functions/confirmCommand";
+import { TournamentRoleType, TournamentChannelType } from "../../../../Interfaces/tournament";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
@@ -90,7 +89,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     await handleUser(m, target, testing, replace, tournament, mappool, mappoolSlot, mappoolMap, assigner, jobPost);
 }
 
-async function handleBeatmapLink (m: Message | ChatInputCommandInteraction, target: string, allowedMods: number | undefined, tournament: Tournament, mappool: Mappool, mappoolSlot: string, mappoolMap: MappoolMap, mod: string, assigner: User, jobPost?: JobPost | null) {
+async function handleBeatmapLink (m: Message | ChatInputCommandInteraction, target: string, allowedMods: number | null | undefined, tournament: Tournament, mappool: Mappool, mappoolSlot: string, mappoolMap: MappoolMap, mod: string, assigner: User, jobPost?: JobPost | null) {
     const linkRegex = /https?:\/\/osu.ppy.sh\/beatmapsets\/(\d+)#(osu|taiko|fruits|mania)\/(\d+)/;
     const link = target.match(linkRegex);
     if (!link) {

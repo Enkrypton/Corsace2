@@ -4,13 +4,12 @@ import tournamentChannel from "./tournaments/channel";
 import tournamentCreate from "./tournaments/create";
 import tournamentEdit from "./tournaments/edit";
 import tournamentInfo from "./tournaments/info";
+import tournamentKey from "./tournaments/key";
 import tournamentList from "./tournaments/list";
+import tournamentQualifiers from "./tournaments/qualifiers";
 import tournamentRole from "./tournaments/role";
-
-import stageCreate from "./tournaments/stage/create";
-import stageDelete from "./tournaments/stage/delete";
-import stageEdit from "./tournaments/stage/edit";
-import stageInfo from "./tournaments/stage/info";
+import tournamentScreening from "./tournaments/screening";
+import tournamentTeams from "./tournaments/teams";
 
 import mappoolAdd from "./tournaments/mappool/add";
 import mappoolAssign from "./tournaments/mappool/assign";
@@ -20,10 +19,12 @@ import mappoolDeadline from "./tournaments/mappool/deadline";
 import mappoolDelete from "./tournaments/mappool/delete";
 import mappoolDownload from "./tournaments/mappool/download";
 import mappoolEdit from "./tournaments/mappool/edit";
+import mappoolFinish from "./tournaments/mappool/finish";
 import mappoolHistory from "./tournaments/mappool/history";
 import mappoolInfo from "./tournaments/mappool/info";
 import mappoolPublish from "./tournaments/mappool/publish";
 import mappoolRemove from "./tournaments/mappool/remove";
+import mappoolReplay from "./tournaments/mappool/replay";
 import mappoolSubmit from "./tournaments/mappool/submit";
 import mappoolSwap from "./tournaments/mappool/swap";
 
@@ -31,6 +32,27 @@ import jobDelete from "./tournaments/mappool/jobBoard/delete";
 import job from "./tournaments/mappool/jobBoard/job";
 import jobInfo from "./tournaments/mappool/jobBoard/info";
 import jobPublish from "./tournaments/mappool/jobBoard/publish";
+
+import stageCreate from "./tournaments/stage/create";
+import stageDelete from "./tournaments/stage/delete";
+import stageEdit from "./tournaments/stage/edit";
+import stageInfo from "./tournaments/stage/info";
+import stageOrder from "./tournaments/stage/order";
+
+import teamAvatar from "./tournaments/team/avatar";
+import teamInvite from "./tournaments/team/invite";
+import teamList from "./tournaments/team/list";
+import teamQualifier from "./tournaments/team/qualifier";
+
+import inviteAccept from "./tournaments/team/invite/accept";
+import inviteDecline from "./tournaments/team/invite/decline";
+import inviteList from "./tournaments/team/invite/list";
+
+import matchupList from "./tournaments/matchup/list";
+import matchupReschedule from "./tournaments/matchup/reschedule";
+import matchupScores from "./tournaments/matchup/scores";
+import matchupStaff from "./tournaments/matchup/staff";
+import matchupStopAutoLobby from "./tournaments/matchup/stopAutoLobby";
 
 import avatar from "./utility/avatar";
 import help from "./utility/help";
@@ -43,10 +65,10 @@ import influenceRemove from "./osu/influenceRemove";
 import profile from "./osu/profile";
 import recent from "./osu/recent";
 
-import { TournamentChannelType } from "../../Models/tournaments/tournamentChannel";
 import { mappoolQACreate, mappoolQADelete } from "./threadCommands/mapoolQA";
 import { jobBoardCreate, jobBoardDelete } from "./threadCommands/jobBoard";
 import { mappoolComponentsThreadType } from "../functions/tournamentFunctions/mappoolComponentsThread";
+import { TournamentChannelType } from "../../Interfaces/tournament";
 
 interface Command {
     data: SlashCommandBuilder | Omit<SlashCommandBuilder, "addSubcommand" | "addSubcommandGroup"> | SlashCommandSubcommandsOnlyBuilder;
@@ -66,14 +88,12 @@ commands.push(tournamentChannel);
 commands.push(tournamentCreate);
 commands.push(tournamentEdit);
 commands.push(tournamentInfo);
+commands.push(tournamentKey);
 commands.push(tournamentList);
+commands.push(tournamentQualifiers);
 commands.push(tournamentRole);
-
-// stage commands
-commands.push(stageCreate);
-commands.push(stageDelete);
-commands.push(stageEdit);
-commands.push(stageInfo);
+commands.push(tournamentScreening);
+commands.push(tournamentTeams);
 
 // mappool commands
 commands.push(mappoolAdd);
@@ -84,10 +104,12 @@ commands.push(mappoolDeadline);
 commands.push(mappoolDelete);
 commands.push(mappoolDownload);
 commands.push(mappoolEdit);
+commands.push(mappoolFinish);
 commands.push(mappoolHistory);
 commands.push(mappoolInfo);
 commands.push(mappoolPublish);
 commands.push(mappoolRemove);
+commands.push(mappoolReplay);
 commands.push(mappoolSubmit);
 commands.push(mappoolSwap);
 
@@ -96,6 +118,31 @@ commands.push(job);
 commands.push(jobDelete);
 commands.push(jobInfo);
 commands.push(jobPublish);
+
+// stage commands
+commands.push(stageCreate);
+commands.push(stageDelete);
+commands.push(stageEdit);
+commands.push(stageInfo);
+commands.push(stageOrder);
+
+// team commands
+commands.push(teamAvatar);
+commands.push(teamInvite);
+commands.push(teamList);
+commands.push(teamQualifier);
+
+// invite commands
+commands.push(inviteAccept);
+commands.push(inviteDecline);
+commands.push(inviteList);
+
+// matchup commands
+commands.push(matchupList);
+commands.push(matchupReschedule);
+commands.push(matchupScores);
+commands.push(matchupStaff);
+commands.push(matchupStopAutoLobby);
 
 // general utility commands
 commands.push(avatar);

@@ -112,6 +112,11 @@ Shared environment by deployments
     secretKeyRef:
       name: {{ include "corsace-chart.fullname" $ }}
       key: googleSheetsSongs
+- name: OSU_PROXY_BASEURL
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: osuProxyBaseUrl
 - name: OSU_V1_APIKEY
   valueFrom:
     secretKeyRef:
@@ -127,6 +132,21 @@ Shared environment by deployments
     secretKeyRef:
       name: {{ include "corsace-chart.fullname" $ }}
       key: osuv2ClientSecret
+- name: OSU_BANCHO_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: osuBanchoUsername
+- name: OSU_BANCHO_IRC_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: osuBanchoIRCPassword
+- name: OSU_BANCHO_BOT_ACCOUNT
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: osuBanchoBotAccount
 - name: KOA_KEY
   valueFrom:
     secretKeyRef:
@@ -137,12 +157,44 @@ Shared environment by deployments
     secretKeyRef:
       name: {{ include "corsace-chart.fullname" $ }}
       key: interOpPassword
+- name: BN_USERNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: bnUsername
+- name: BN_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: bnSecret
+- name: CLOUDFLARE_R2_HOSTNAME
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: cloudflareR2Hostname
+- name: CLOUDFLARE_R2_ACCESS_KEY_ID
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: cloudflareR2AccessKeyId
+- name: CLOUDFLARE_R2_SECRET_ACCESS_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: cloudflareR2SecretAccessKey
+- name: CENTRIFUGO_API_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "corsace-chart.fullname" $ }}
+      key: centrifugoApiKey
 - name: API_PUBLICURL
   value: {{ default (printf "%s%s%s" "http://" (include "corsace-chart.fullname" $) "-api") $.Values.webServices.api.publicUrl }}
 - name: CRONRUNNER_PUBLICURL
-  value: {{ default (lower (printf "%s%s%s" "http://" (include "corsace-chart.fullname" $) "-cronRunner")) $.Values.webServices.api.publicUrl }}
+  value: {{ default (lower (printf "%s%s%s" "http://" (include "corsace-chart.fullname" $) "-cronRunner")) $.Values.webServices.cronRunner.publicUrl }}
+- name: BANCHOBOT_PUBLICURL
+  value: {{ default (lower (printf "%s%s%s" "http://" (include "corsace-chart.fullname" $) "-banchoBot")) $.Values.webServices.banchoBot.publicUrl }}
 {{- range $webServiceName, $webService := $.Values.webServices }}
-{{- if and (ne $webServiceName "api") (ne $webServiceName "cronRunner") }}
+{{- if and (ne $webServiceName "api") (ne $webServiceName "cronRunner") (ne $webServiceName "banchoBot") }}
 - name: {{ $webServiceName | upper }}_PUBLICURL
   value: {{ $webService.publicUrl }}
 - name: {{ $webServiceName | upper }}_SSR
