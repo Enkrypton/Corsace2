@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, EmbedBuilder, Message, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, Message, SlashCommandBuilder } from "discord.js";
 import { Command } from "../../";
 import { extractParameters } from "../../../functions/parameterFunctions";
 import { Team } from "../../../../Models/tournaments/team";
@@ -6,23 +6,24 @@ import commandUser from "../../../functions/commandUser";
 import respond from "../../../functions/respond";
 import getUser from "../../../../Server/functions/get/getUser";
 import { loginResponse } from "../../../functions/loginResponse";
+import { EmbedBuilder } from "../../../functions/embedBuilder";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
         await m.deferReply();
         
-    const params = extractParameters<parameters>(m, [
+    const params = await extractParameters<parameters>(m, [
         { name: "all", shortName: "a", paramType: "boolean", optional: true },
-        { name: "manager", shortName: "m", paramType: "boolean", optional: true },
+        { name: "captain", shortName: "c", paramType: "boolean", optional: true },
     ]);
     if (!params)
         return;
 
-    const { all, manager } = params;
+    const { all, captain } = params;
 
     const teamQ = Team
         .createQueryBuilder("team")
-        .innerJoinAndSelect("team.manager", "manager")
+        .innerJoinAndSelect("team.captain", "captain")
         .leftJoinAndSelect("team.members", "member")
         .leftJoinAndSelect("team.tournaments", "tournament");
 
@@ -33,8 +34,8 @@ async function run (m: Message | ChatInputCommandInteraction) {
             return;
         }
 
-        teamQ.where("manager.ID = :userID", { userID: user.ID });
-        if (!manager)
+        teamQ.where("captain.ID = :userID", { userID: user.ID });
+        if (!captain)
             teamQ.orWhere("member.ID = :userID", { userID: user.ID });
     }
 
@@ -43,14 +44,14 @@ async function run (m: Message | ChatInputCommandInteraction) {
     const embed = new EmbedBuilder()
         .setTitle("Teams")
         .setDescription(`Showing ${teams.length} teams`)
-        .setFields(teams.map(team => {
+        .addFields(teams.map(team => {
             return {
                 name: `${team.name} (${team.abbreviation})`,
-                value: `Manager: ${team.manager.osu.username} <@${team.manager.discord.userID}> (${team.manager.osu.userID})\nMembers: ${team.members.map(member => `${member.osu.username} <@${member.discord.userID}> (${member.osu.userID})`).join(", ")}\nTournaments: ${team.tournaments.map(tournament => `${tournament.name} (${tournament.abbreviation})`).join(", ")}`,
+                value: `Captain: ${team.captain.osu.username} <@${team.captain.discord.userID}> (${team.captain.osu.userID})\nMembers: ${team.members.map(member => `${member.osu.username} <@${member.discord.userID}> (${member.osu.userID})`).join(", ")}\nTournaments: ${team.tournaments.map(tournament => `${tournament.name} (${tournament.abbreviation})`).join(", ")}`,
             };
         }));
 
-    await respond(m, undefined, [ embed ]);
+    await respond(m, undefined, embed);
 }
 
 const data = new SlashCommandBuilder()
@@ -61,13 +62,13 @@ const data = new SlashCommandBuilder()
             .setDescription("List all tournament teams that exist (Default false)")
             .setRequired(false))
     .addBooleanOption(option => 
-        option.setName("manager")
-            .setDescription("Only list teams you manage (Default false)")
+        option.setName("captain")
+            .setDescription("Only list teams you are captain for (Default false)")
             .setRequired(false));
 
 interface parameters {
     all?: boolean,
-    manager?: boolean,
+    captain?: boolean,
 }
 
 const teamList: Command = {

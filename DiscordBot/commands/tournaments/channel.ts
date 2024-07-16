@@ -26,7 +26,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
         return;
     }
 
-    const params = extractParameters<parameters>(m, [
+    const params = await extractParameters<parameters>(m, [
         { name: "channel", paramType: "channel" },
         { name: "remove", shortName: "r", paramType: "boolean", optional: true },
         { name: "channel_type", paramType: "string", optional: true },
@@ -37,7 +37,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     const { channel, remove, channel_type } = params;
 
     if (!remove && !channel_type) {
-        await respond(m, "Listen ur either gonna have to tell me to remove a channel, or ur gonna have to specify the channel type u want to add\n\nThe list of channel types are:\nGeneral (general)\nParticipants (participants)\nStaff (staff)\nManagers (managers)\nAnnouncements (announcements)\nAdmin (admin)\nMappool (mappool)\nMappool Log (mappoollog)\nMappool QA (mappoolqa)\nJob Board (jobboard)\nReferees (referees)\nStreamers (streamers)\nMatchup Results (matchupresults)\n\nExample: `!tournament_channel #general general`");
+        await respond(m, "Listen ur either gonna have to tell me to remove a channel, or ur gonna have to specify the channel type u want to add\n\nThe list of channel types are:\nGeneral (general)\nParticipants (participants)\nStaff (staff)\nCaptains (captains)\nAnnouncements (announcements)\nAdmin (admin)\nMappool (mappool)\nMappool Log (mappoollog)\nMappool QA (mappoolqa)\nJob Board (jobboard)\nReferees (referees)\nStreamers (streamers)\nMatchup Results (matchupresults)\n\nExample: `!tournament_channel #general general`");
         return;
     }
 
@@ -88,7 +88,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
     const channelType = channel_type.toLowerCase().charAt(0).toUpperCase() + channel_type.toLowerCase().slice(1);
     if (
-        TournamentChannelType[channelType] === undefined ||
+        !(channelType in TournamentChannelType) ||
         (channelType.toLowerCase() === "announcements" && channelType.toLowerCase() === "streamannouncements" && discordChannel.type !== ChannelType.GuildAnnouncement) || 
         (channelType.toLowerCase() === "mappoolqa" && discordChannel.type !== ChannelType.GuildForum) ||
         (channelType.toLowerCase() === "jobboard" && discordChannel.type !== ChannelType.GuildForum) ||
@@ -112,7 +112,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     tournamentChannel = new TournamentChannel();
     tournamentChannel.createdBy = user;
     tournamentChannel.channelID = discordChannel.id;
-    tournamentChannel.channelType = TournamentChannelType[channelType];
+    tournamentChannel.channelType = TournamentChannelType[channelType as keyof typeof TournamentChannelType];
 
     const tags = forumTags()[tournamentChannel.channelType];
     if (tags) {
@@ -160,8 +160,8 @@ const data = new SlashCommandBuilder()
                 value: "Staff",
             },
             {
-                name: "Managers",
-                value: "Managers",
+                name: "Captains",
+                value: "Captains",
             },
             {
                 name: "Announcements",
@@ -197,11 +197,11 @@ const data = new SlashCommandBuilder()
             },
             {
                 name: "Referees",
-                value: "Referees",
+                value: "Referee",
             },
             {
                 name: "Streamers",
-                value: "Streamers",
+                value: "Stream",
             },
             {
                 name: "Rescheduling",

@@ -7,11 +7,12 @@
             <div class="qualifier__main_content">
                 <OpenTitle>
                     QUALIFIERS
-                    <template #buttons>
+                    <template #right>
                         <ContentButton
                             v-if="qualifierData.mp"
                             class="content_button--red content_button--red_sm"
                             :link="`https://osu.ppy.sh/community/matches/${qualifierData.mp}`"
+                            external
                         >
                             osu! MP LINK
                         </ContentButton>
@@ -84,9 +85,9 @@
                     </ContentButton>
                 </div>
                 <ScoresView
-                    v-if="qualifiersStage?.mappool?.[0].isPublic"
+                    v-if="mappools?.[0]?.isPublic"
                     :view="scoreView"
-                    :pool="qualifiersStage.mappool"
+                    :pool="mappools[0]"
                 />
             </div>
         </div>
@@ -119,7 +120,8 @@ import { namespace } from "vuex-class";
 
 import { Qualifier as QualifierInterface } from "../../../Interfaces/qualifier";
 import { Tournament } from "../../../Interfaces/tournament";
-import { Stage } from "../../../Interfaces/stage";
+import { Stage, StageType } from "../../../Interfaces/stage";
+import { Mappool } from "../../../Interfaces/mappool";
 import { Team } from "../../../Interfaces/team";
 
 import ContentButton from "../../../Assets/components/open/ContentButton.vue";
@@ -138,18 +140,18 @@ const openModule = namespace("open");
     },
     head () {
         return {
-            title: this.$store.state["open"].title,
+            title: this.$store.state.open.title,
             meta: [
-                {hid: "description", name: "description", content: this.$store.state["open"].tournament.description},
+                {hid: "description", name: "description", content: this.$store.state.open.tournament?.description || ""},
 
-                {hid: "og:site_name", property: "og:site_name", content: this.$store.state["open"].title},
-                {hid: "og:title", property: "og:title", content: this.$store.state["open"].title},
+                {hid: "og:site_name", property: "og:site_name", content: this.$store.state.open.title},
+                {hid: "og:title", property: "og:title", content: this.$store.state.open.title},
                 {hid: "og:url", property: "og:url", content: `https://open.corsace.io${this.$route.path}`},
-                {hid: "og:description", property: "og:description", content: this.$store.state["open"].tournament.description},
+                {hid: "og:description", property: "og:description", content: this.$store.state.open.tournament?.description || ""},
                 {hid: "og:image",property: "og:image", content: require("../../../Assets/img/site/open/banner.png")},
                 
-                {name: "twitter:title", content: this.$store.state["open"].title},
-                {name: "twitter:description", content: this.$store.state["open"].tournament.description},
+                {name: "twitter:title", content: this.$store.state.open.title},
+                {name: "twitter:description", content: this.$store.state.open.tournament?.description || ""},
                 {name: "twitter:image", content: require("../../../Assets/img/site/open/banner.png")},
                 {name: "twitter:image:src", content: require("../../../Assets/img/site/open/banner.png")},
             ],
@@ -162,10 +164,11 @@ const openModule = namespace("open");
 })
 export default class Qualifier extends Vue {
 
-    scoreView: "teams" | "players"  = "teams";
+    scoreView: "teams" | "players"  = "players";
 
     @openModule.State tournament!: Tournament | null;
-    @openModule.State team!: Team | null;
+    @openModule.State myTeams!: Team[] | null;
+    @openModule.State mappools!: Mappool[] | null;
 
     loading = false;
     qualifierData: QualifierInterface | null = null;
@@ -189,31 +192,32 @@ export default class Qualifier extends Vue {
     };
 
     get qualifiersStage (): Stage | null {
-        return this.tournament?.stages.find(s => s.stageType === 0) || null;
+        return this.tournament?.stages.find(s => s.stageType === StageType.Qualifiers) ?? null;
     }
 
     async getQualifier (): Promise<QualifierInterface | null> {
         this.loading = true;
         let ID = 0;
         if (!this.$route.params.id) {
-            if (!this.team?.qualifier?.ID) {
+            if (!this.myTeams || !this.myTeams.some(t => t.qualifier?.ID)) {
                 this.loading = false;
                 return null;
             }
             
-            ID = this.team.qualifier.ID;
+            ID = this.myTeams.find(t => t.qualifier?.ID)?.qualifier?.ID ?? 0;
         } else
             ID = parseInt(this.$route.params.id);
 
-        const { data: qualifierData } = await this.$axios.get(`/api/qualifier/${ID}`);
+        const { data } = await this.$axios.get<{ qualifierData: QualifierInterface }>(`/api/qualifier/${ID}`);
         this.loading = false;
-        return qualifierData.error ? null : qualifierData;
+        return !data.success ? null : data.qualifierData;
     }
 
     async mounted () {
         this.qualifierData = await this.getQualifier();
         if (this.qualifierData) {
-            this.$store.commit("open/setQualifierScores", this.qualifierData.scores);
+            await this.$store.dispatch("open/setMappools", this.qualifiersStage?.ID);
+            this.$store.commit("open/setScores", this.qualifierData.scores);
             this.qualifierData.date = new Date(this.qualifierData.date);
         }
     }
@@ -230,7 +234,6 @@ export default class Qualifier extends Vue {
 @import '@s-sass/_variables';
 
 .qualifier {
-    background: linear-gradient(180deg, #1F1F1F 0%, #131313 100%);
     height: 100%;
 
     &__wrapper {
@@ -242,7 +245,6 @@ export default class Qualifier extends Vue {
         position: relative;
         width: 65vw;
         padding: 35px;
-        background: linear-gradient(180deg, #1B1B1B 0%, #333333 261.55%);
     }
 
     &__info_bar {

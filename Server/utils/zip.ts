@@ -11,6 +11,6 @@ export function zipFiles (files: { content: Readable, name: string }[]): Readabl
         archive.append(content, { name });
     }
 
-    archive.finalize();
-    return passThrough as any;
+    void archive.finalize().catch((err) => passThrough.emit("error", err));
+    return passThrough as Readable;
 }

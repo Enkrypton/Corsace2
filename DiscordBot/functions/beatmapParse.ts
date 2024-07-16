@@ -1,14 +1,10 @@
 
-import Axios from "axios";
-import osu from "ojsama";
+import axios from "axios";
 import { Entry, Parse } from "unzipper";
-import { once } from "events";
 import { ChatInputCommandInteraction, ForumChannel, Message } from "discord.js";
-import { Beatmap as APIBeatmap} from "nodesu";
 import { CustomBeatmap } from "../../Models/tournaments/mappools/customBeatmap";
 import { deletePack } from "../../Server/functions/tournaments/mappool/mappackFunctions";
 import { MappoolMapHistory } from "../../Models/tournaments/mappools/mappoolMapHistory";
-import { BeatmapParser } from "../../Server/beatmapParser";
 import getCustomThread from "./tournamentFunctions/getCustomThread";
 import beatmapEmbed from "./beatmapEmbed";
 import { applyMods, modsToAcronym } from "../../Interfaces/mods";
@@ -20,33 +16,36 @@ import { Mappool } from "../../Models/tournaments/mappools/mappool";
 import { MappoolSlot } from "../../Models/tournaments/mappools/mappoolSlot";
 import { User } from "../../Models/user";
 import { discordClient } from "../../Server/discord";
+import customBeatmapToNodesu from "../../Server/functions/tournaments/mappool/customBeatmapToNodesu";
+import { ParserBeatmap, parseBeatmap,  parseBeatmapAttributes, ParserBeatmapAttributes, parseBeatmapStrains, ParserStrains } from "wasm-replay-parser-rs";
 
-export async function ojsamaParse (m: Message | ChatInputCommandInteraction, diff: string, link: string) {
-    let beatmap: osu.beatmap | undefined = undefined;
+export async function beatmapParse (m: Message | ChatInputCommandInteraction, diff: string, link: string, mods = 0) {
+    let beatmap: ParserBeatmap | undefined = undefined;
+    let beatmapAttributes: ParserBeatmapAttributes | undefined = undefined;
+    let beatmapStrains: ParserStrains | undefined = undefined;
     let background: string | undefined = undefined;
     let axiosData: any = null;
     try {
-        const { data } = await Axios.get(link, { responseType: "stream" });
+        const { data } = await axios.get(link, { responseType: "stream" });
         axiosData = data;
     } catch (e) {
-        m.reply("Can't download the map. Make sure the link is valid");
+        await m.reply("Can't download the map. Make sure the link is valid");
         return;
     }
     const zip = axiosData.pipe(Parse({ forceStream: true }));
-    const osuParser = new osu.parser();
     let foundBeatmap = false;
     for await (const _entry of zip) {
         const entry = _entry as Entry;
+        const buffer = await entry.buffer();
 
         if (entry.type === "File" && entry.props.path.endsWith(".osu") && !foundBeatmap) {
-            const writableBeatmapParser = new BeatmapParser(osuParser);
-            entry.pipe(writableBeatmapParser);
-            await once(writableBeatmapParser, "finish");
-            
-            if (diff !== "" && osuParser.map.version.toLowerCase() !== diff.toLowerCase())
+            beatmap = parseBeatmap(Uint8Array.from(buffer));
+            beatmapAttributes = parseBeatmapAttributes(undefined, Uint8Array.from(buffer));
+            beatmapStrains = parseBeatmapStrains(Uint8Array.from(buffer), undefined, mods);
+
+            if (diff !== "" && beatmap.diff_name.toLowerCase() !== diff.toLowerCase())
                 continue;
 
-            beatmap = osuParser.map;
             foundBeatmap = true;
             if (background)
                 break;
@@ -56,7 +55,6 @@ export async function ojsamaParse (m: Message | ChatInputCommandInteraction, dif
             entry.props.path.endsWith(".jpeg")
         )) {
             // Get image and send in a discord message, then assign the link to the background variable
-            const buffer = await entry.buffer();
             const message = await m.channel!.send({
                 files: [{
                     attachment: buffer,
@@ -73,11 +71,23 @@ export async function ojsamaParse (m: Message | ChatInputCommandInteraction, dif
 
     return {
         beatmap,
+        beatmapAttributes,
+        beatmapStrains,
         background,
     };
 }
 
-export async function ojsamaToCustom (m: Message | ChatInputCommandInteraction, tournament: Tournament, mappool: Mappool, slot: MappoolSlot, mappoolMap: MappoolMap, beatmapData: { beatmap: osu.beatmap | undefined, background: string | undefined }, link: string, user: User, mappoolSlot: string) {
+export async function parsedBeatmapToCustom (
+    m: Message | ChatInputCommandInteraction,
+    tournament: Tournament,
+    mappool: Mappool,
+    slot: MappoolSlot,
+    mappoolMap: MappoolMap,
+    beatmapData: { beatmap: ParserBeatmap | undefined, beatmapAttributes: ParserBeatmapAttributes | undefined, beatmapStrains: ParserStrains | undefined, background: string | undefined },
+    link: string,
+    user: User,
+    mappoolSlot: string
+) {
     if (!mappoolMap.customBeatmap)
         mappoolMap.customBeatmap = new CustomBeatmap();
 
@@ -85,40 +95,30 @@ export async function ojsamaToCustom (m: Message | ChatInputCommandInteraction, 
 
     const artist = beatmap.artist;
     const title = beatmap.title;
-    const diff = beatmap.version;
+    const diff = beatmap.diff_name;
 
     const cs = beatmap.cs;
-    const ar = beatmap.ar ?? -1;
+    const ar = beatmap.ar;
     const od = beatmap.od;
     const hp = beatmap.hp;
-    const circles = beatmap.objects.filter(object => object.type === osu.objtypes.circle).length;
-    const sliders = beatmap.objects.filter(object => object.type === osu.objtypes.slider).length;
-    const spinners = beatmap.objects.filter(object => object.type === osu.objtypes.spinner).length;
-    const maxCombo = beatmap.max_combo();
+    const circles = beatmap.circles;
+    const sliders = beatmap.sliders;
+    const spinners = beatmap.spinners;
+    const maxCombo = beatmap.max_combo;
 
     // Obtaining length
-    const lengthMs = beatmap.objects[beatmap.objects.length - 1].time - beatmap.objects[0].time;
+    const lengthMs = beatmap.map_length;
     const length = lengthMs / 1000;
+    const drainTimeMs = beatmap.drain_time;
+    const drainTime = drainTimeMs / 1000;
 
     // Obtaining bpm
-    const changedLines = beatmap.timing_points.filter(line => line.change === true);
-    const timingPoints = changedLines.map((line, i) => {
-        return {
-            bpm: 60000 / line.ms_per_beat,
-            length: (i < changedLines.length - 1) ? changedLines[i + 1].time - line.time : beatmap!.objects[beatmap!.objects.length - 1].time - line.time,
-        };
-    });
-    let bpm = 0;
-    if (timingPoints.length === 1)
-        bpm = timingPoints[0].bpm;
-    else
-        bpm = timingPoints.reduce((acc, curr) => acc + curr.length * curr.bpm, 0) / timingPoints.reduce((acc, curr) => acc + curr.length, 0);
+    const bpm = beatmap.bpm ?? 0;
 
     // Obtaining star rating
-    const calc = new osu.std_diff().calc({map: beatmap, mods: slot.allowedMods || 0});
-    const aimSR = calc.aim;
-    const speedSR = calc.speed;
-    const sr = calc.total;
+    const aimSR = beatmapData.beatmapStrains?.difficulty?.at(-1)?.aim_strain ?? 0;
+    const speedSR = beatmapData.beatmapStrains?.difficulty?.at(-1)?.speed_strain ?? 0;
+    const sr = beatmapData.beatmapStrains?.difficulty?.at(-1)?.stars ?? 0;
 
     mappoolMap.customBeatmap.link = link;
     mappoolMap.customBeatmap.background = beatmapData.background;
@@ -126,7 +126,7 @@ export async function ojsamaToCustom (m: Message | ChatInputCommandInteraction, 
     mappoolMap.customBeatmap.title = title;
     mappoolMap.customBeatmap.BPM = parseFloat(bpm.toFixed(2));
     mappoolMap.customBeatmap.totalLength = length;
-    mappoolMap.customBeatmap.hitLength = length;
+    mappoolMap.customBeatmap.hitLength = drainTime;
     mappoolMap.customBeatmap.difficulty = diff;
     mappoolMap.customBeatmap.circleSize = cs;
     mappoolMap.customBeatmap.overallDifficulty = od;
@@ -169,71 +169,11 @@ export async function ojsamaToCustom (m: Message | ChatInputCommandInteraction, 
     log.link = link;
     await log.save();
 
-    const apiBeatmap = new APIBeatmap({
-        "beatmapset_id": "-1",
-        "beatmap_id": "-1",
-        "approved": "-3",
-        "total_length": `${mappoolMap.customBeatmap.totalLength}`,
-        "hit_length": `${mappoolMap.customBeatmap.hitLength}`,
-        "version": mappoolMap.customBeatmap.difficulty,
-        "file_md5": "",
-        "diff_size": `${mappoolMap.customBeatmap.circleSize}`,
-        "diff_overall": `${mappoolMap.customBeatmap.overallDifficulty}`,
-        "diff_approach": `${mappoolMap.customBeatmap.approachRate}`,
-        "diff_drain": `${mappoolMap.customBeatmap.hpDrain}`,
-        "mode": `${mappoolMap.customBeatmap.mode.ID - 1}`,
-        "count_normal": `${mappoolMap.customBeatmap.circles}`,
-        "count_slider": `${mappoolMap.customBeatmap.sliders}`,
-        "count_spinner": `${mappoolMap.customBeatmap.spinners}`,
-        "submit_date": [
-            mappoolMap.createdAt.getUTCMonth() + 1,
-            mappoolMap.createdAt.getUTCDate(),
-            mappoolMap.createdAt.getUTCFullYear(),
-        ].join("/") + " " + [
-            mappoolMap.createdAt.getUTCHours(),
-            mappoolMap.createdAt.getUTCMinutes(),
-            mappoolMap.createdAt.getUTCSeconds(),
-        ].join(":"),
-        "approved_date": null,
-        "last_update": [
-            mappoolMap.lastUpdate.getUTCMonth() + 1,
-            mappoolMap.lastUpdate.getUTCDate(),
-            mappoolMap.lastUpdate.getUTCFullYear(),
-        ].join("/") + " " + [
-            mappoolMap.lastUpdate.getUTCHours(),
-            mappoolMap.lastUpdate.getUTCMinutes(),
-            mappoolMap.lastUpdate.getUTCSeconds(),
-        ].join(":"),
-        "artist": mappoolMap.customBeatmap.artist,
-        "artist_unicode": mappoolMap.customBeatmap.artist,
-        "title": mappoolMap.customBeatmap.title,
-        "title_unicode": mappoolMap.customBeatmap.title,
-        "creator": mappoolMap.customMappers.map(u => u.osu.username).join(", "),
-        "creator_id": "-1",
-        "bpm": `${mappoolMap.customBeatmap.BPM}`,
-        "source": "",
-        "tags": `${mappoolMap.customBeatmap.link ?? ""}`,
-        "genre_id": "0",
-        "language_id": "0",
-        "favourite_count": "0",
-        "rating": "0",
-        "storyboard": "0",
-        "video": "0",
-        "download_unavailable": "0",
-        "audio_unavailable": "0",
-        "playcount": "0",
-        "passcount": "0",
-        "packs": null,
-        "max_combo": mappoolMap.customBeatmap.maxCombo ? `${mappoolMap.customBeatmap.maxCombo}` : null,
-        "diff_aim": mappoolMap.customBeatmap.aimSR ? `${mappoolMap.customBeatmap.aimSR}` : null,
-        "diff_speed": mappoolMap.customBeatmap.speedSR ? `${mappoolMap.customBeatmap.speedSR}` : null,
-        "difficultyrating": `${mappoolMap.customBeatmap.totalSR}`,
-    });
-    const set = [apiBeatmap];
-    const mappoolMapEmbed = await beatmapEmbed(applyMods(apiBeatmap, modsToAcronym(slot.allowedMods || 0)), modsToAcronym(slot.allowedMods || 0), set);
-    mappoolMapEmbed.data.author!.name = `${mappoolSlot}: ${mappoolMapEmbed.data.author!.name}`;
+    const nodesuBeatmap = customBeatmapToNodesu({...mappoolMap, customBeatmap: mappoolMap.customBeatmap});
+    const mappoolMapEmbed = await beatmapEmbed(applyMods(nodesuBeatmap, modsToAcronym(slot.allowedMods ?? 0)), modsToAcronym(slot.allowedMods ?? 0), [nodesuBeatmap]);
+    mappoolMapEmbed.embed.author!.name = `${mappoolSlot}: ${mappoolMapEmbed.embed.author!.name}`;
 
-    await respond(m, `Submitted \`${artist} - ${title} [${diff}]\` to \`${mappoolSlot}\``, [mappoolMapEmbed]);
+    await respond(m, `Submitted \`${artist} - ${title} [${diff}]\` to \`${mappoolSlot}\``, mappoolMapEmbed);
 
     await mappoolLog(tournament, "submit", user, log, mappoolSlot);
 }

@@ -1,6 +1,6 @@
 import { Entity, Column, BaseEntity, ManyToOne, PrimaryGeneratedColumn, SelectQueryBuilder, Index } from "typeorm";
+import { ModeDivisionType } from "../../Interfaces/modes";
 import { User } from "../user";
-import { ModeDivisionType } from "./modeDivision";
 
 @Entity()
 @Index(["year", "standard", "taiko", "fruits", "mania", "storyboard"])
@@ -28,11 +28,13 @@ export class MCAEligibility extends BaseEntity {
     @Column({ default: false })
         storyboard!: boolean;
 
-    @ManyToOne(() => User, user => user.mcaEligibility)
+    @ManyToOne(() => User, user => user.mcaEligibility, {
+        nullable: false,
+    })
         user!: User;
 
     static whereMode (modeId: number, qb?: SelectQueryBuilder<MCAEligibility>): SelectQueryBuilder<MCAEligibility> {
-        const eligibilityQuery = qb || this.createQueryBuilder("eligibility");
+        const eligibilityQuery = qb ?? this.createQueryBuilder("eligibility");
         
         switch (modeId) {
             case ModeDivisionType.standard:

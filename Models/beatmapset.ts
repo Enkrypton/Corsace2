@@ -2,8 +2,8 @@ import { Entity, BaseEntity, PrimaryColumn, OneToMany, Column, ManyToOne, Select
 import { BeatmapsetInfo } from "../Interfaces/beatmap";
 import { Category } from "../Interfaces/category";
 import { StageQuery } from "../Interfaces/queries";
+import { ModeDivisionType } from "../Interfaces/modes";
 import { Beatmap } from "./beatmap";
-import { ModeDivisionType } from "./MCA_AYIM/modeDivision";
 import { Nomination } from "./MCA_AYIM/nomination";
 import { Vote } from "./MCA_AYIM/vote";
 import { User } from "./user";
@@ -66,6 +66,7 @@ export class Beatmapset extends BaseEntity {
 
     @ManyToOne(() => User, user => user.beatmapsets, {
         eager: true,
+        nullable: false,
     })
         creator!: User;
     
@@ -80,7 +81,7 @@ export class Beatmapset extends BaseEntity {
 
     static search (year: number, modeId: number, stage: "voting" | "nominating", category: Category, query: StageQuery): Promise<[Beatmapset[], number]> {
         // Initial repo setup
-        const includeStoryboard = modeId === ModeDivisionType.storyboard;
+        const includeStoryboard = modeId === ModeDivisionType.storyboard.valueOf();
         const queryBuilder = this.createQueryBuilder("beatmapset");
         
         if (stage === "voting") {
@@ -106,7 +107,8 @@ export class Beatmapset extends BaseEntity {
             .leftJoinAndSelect("beatmapset.creator", "user")
             .leftJoinAndSelect("user.otherNames", "otherName")
             .innerJoinAndSelect("beatmapset.beatmaps", "beatmap", includeStoryboard ? "beatmap.storyboard = :q" : "beatmap.mode = :q", { q: includeStoryboard ? true : modeId })
-            .andWhere("beatmapset.approvedDate BETWEEN :start AND :end", { start: `${year}-01-01`, end: `${year + 1}-01-01` });
+            .andWhere("beatmapset.approvedDate BETWEEN :start AND :end", { start: `${year}-01-01`, end: `${year + 1}-01-01` })
+            .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')");
 
         // Only include if there are more than 2 nominators in voting stage
         if (stage === "voting" && modeId === 1) {
@@ -226,7 +228,7 @@ export class Beatmapset extends BaseEntity {
                    
         // Ordering
         const optionQuery = query.option ? query.option.toLowerCase() : "";
-        const order = query.order || "ASC";
+        const order = query.order ?? "ASC";
         let option = "beatmapset.approvedDate";
         if (/(artist|title|favs|creator|sr)/i.test(optionQuery)) {
             if (optionQuery.includes("artist"))
@@ -259,6 +261,7 @@ export class Beatmapset extends BaseEntity {
             .innerJoin("beatmapset.beatmaps", "beatmap", "beatmap.mode = :mode", { mode: modeId })
             .innerJoin("beatmapset.creator", "creator")
             .where("beatmapset.approvedDate BETWEEN :start AND :end", { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) })
+            .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
             .select(["beatmapset.ID", "beatmapset.title", "beatmapset.artist"])
             .addSelect(["creator.ID", "creator.osu.username", "creator.osu.userID"])
             .limit(3);
@@ -270,6 +273,7 @@ export class Beatmapset extends BaseEntity {
             .innerJoin("beatmapset.beatmaps", "beatmap", "beatmap.mode = :mode", { mode: modeId })
             .innerJoin("beatmapset.creator", "creator")
             .where("beatmapset.approvedDate BETWEEN :start AND :end", { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) })
+            .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
             .limit(1);
     }
 

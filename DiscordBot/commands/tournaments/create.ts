@@ -1,5 +1,5 @@
 import { config } from "node-config-ts";
-import { ActionRowBuilder, ChatInputCommandInteraction, Message, PermissionFlagsBits, SlashCommandBuilder, MessageComponentInteraction, StringSelectMenuBuilder, StringSelectMenuInteraction, EmbedBuilder, PermissionsBitField, ButtonBuilder, ButtonStyle, ChannelType, GuildChannelCreateOptions, ForumChannel } from "discord.js";
+import { ActionRowBuilder, ChatInputCommandInteraction, Message, PermissionFlagsBits, SlashCommandBuilder, MessageComponentInteraction, StringSelectMenuBuilder, StringSelectMenuInteraction, PermissionsBitField, ButtonBuilder, ButtonStyle, ChannelType, GuildChannelCreateOptions, ForumChannel } from "discord.js";
 import { ModeDivision, modeTextToID } from "../../../Models/MCA_AYIM/modeDivision";
 import { Tournament, TournamentStatus, sortTextToOrder } from "../../../Models/tournaments/tournament";
 import { User } from "../../../Models/user";
@@ -20,6 +20,7 @@ import { cron } from "../../../Server/cron";
 import { CronJobType } from "../../../Interfaces/cron";
 import { StageType } from "../../../Interfaces/stage";
 import { TournamentRoleType, TournamentChannelType, getTournamentChannelTypeRoles, forumTags } from "../../../Interfaces/tournament";
+import { EmbedBuilder } from "../../functions/embedBuilder";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (!m.guild || !(m.member!.permissions as Readonly<PermissionsBitField>).has(PermissionFlagsBits.Administrator))
@@ -242,8 +243,8 @@ async function tournamentQualifiersPass (m: Message, tournament: Tournament, cre
         components: [stop],
     });
     let stopped = false;
-    const componentCollector = m.channel!.createMessageComponentCollector({ filter, time: 6000000 });	
-    const collector = m.channel!.createMessageCollector({ filter, time: 6000000 });
+    const componentCollector = m.channel.createMessageComponentCollector({ filter, time: 6000000 });	
+    const collector = m.channel.createMessageCollector({ filter, time: 6000000 });
     componentCollector.on("collect", async (i: MessageComponentInteraction) => {	
         if (i.customId === id) {
             const reply = await i.reply("Tournament creation stopped");
@@ -291,7 +292,7 @@ async function tournamentRoles (m: Message, tournament: Tournament, creator: Use
         tournamentRole.createdBy = creator;
         tournamentRole.roleID = role.id;
         tournamentRole.roleType = TournamentRoleType.Organizer;
-        tournament.roles!.push(tournamentRole);
+        tournament.roles.push(tournamentRole);
 
         content += `\nDesignated role \`${role.name} (${role.id})\` for \`Organizer\``;
     }
@@ -321,9 +322,9 @@ async function tournamentRoles (m: Message, tournament: Tournament, creator: Use
                                 description: "Create a tournament staff role",
                             },
                             {
-                                label: "Managers",
-                                value: "Managers",
-                                description: "Create a team manager role",
+                                label: "Captains",
+                                value: "Captains",
+                                description: "Create a team captain role",
                             },
                             {
                                 label: "Mappoolers",
@@ -380,8 +381,8 @@ async function tournamentRoles (m: Message, tournament: Tournament, creator: Use
         ],
     });
 
-    const componentCollector = m.channel!.createMessageComponentCollector({ filter, time: 6000000 });
-    const roleCollector = m.channel!.createMessageCollector({ filter, time: 6000000 });
+    const componentCollector = m.channel.createMessageComponentCollector({ filter, time: 6000000 });
+    const roleCollector = m.channel.createMessageCollector({ filter, time: 6000000 });
 
     componentCollector.on("collect", async (i: MessageComponentInteraction) => {
         if (stopped)
@@ -406,8 +407,8 @@ async function tournamentRoles (m: Message, tournament: Tournament, creator: Use
         }
         if (i.customId === ids.role) {
             const roleString = (i as StringSelectMenuInteraction).values[0];
-            const roleType = TournamentRoleType[roleString];
-            if (tournament.roles!.find(r => r.roleType === roleType)) {
+            const roleType = TournamentRoleType[roleString as keyof typeof TournamentRoleType];
+            if (tournament.roles.find(r => r.roleType === roleType)) {
                 await i.reply("A role with this type already exists.\n If u wanna create another role with this type, manually create it and then mention it here");
                 setTimeout(async () => (await i.deleteReply()), 5000);
                 return;
@@ -421,7 +422,7 @@ async function tournamentRoles (m: Message, tournament: Tournament, creator: Use
             tournamentRole.createdBy = creator;
             tournamentRole.roleID = role.id;
             tournamentRole.roleType = roleType;
-            tournament.roles!.push(tournamentRole);
+            tournament.roles.push(tournamentRole);
 
             content += `\nCreated role <@&${role.id}> for \`${roleString}\``;
             await roleMessage.edit(content);
@@ -434,44 +435,53 @@ async function tournamentRoles (m: Message, tournament: Tournament, creator: Use
         if (stopped)
             return;
 
-        const role = msg.mentions.roles.first() || m.guild!.roles.cache.get(msg.content.split(" ")[0]);
+        const role = msg.mentions.roles.first() ?? m.guild!.roles.cache.get(msg.content.split(" ")[0]);
         if (!role) {
             const reply = await msg.reply("Invalid role");
             setTimeout(async () => {
-                reply.delete();
-                msg.delete();
+                await Promise.all([
+                    reply.delete(),
+                    msg.delete(),
+                ]);
             }, 5000);
             return;
         }
         const roleType = msg.content.split(" ")[1].charAt(0).toUpperCase() + msg.content.split(" ")[1].slice(1);
-        if (TournamentRoleType[roleType] === undefined) {
+        if (!(roleType in TournamentRoleType)) {
             const reply = await msg.reply(`Invalid role type ${roleType}`);
             setTimeout(async () => {
-                reply.delete();
-                msg.delete();
+                await Promise.all([
+                    reply.delete(),
+                    msg.delete(),
+                ]);
             }, 5000);
             return;
         }
-        const dupeRole = tournament.roles!.find(r => r.roleID === role.id);
+        const dupeRole = tournament.roles.find(r => r.roleID === role.id);
         if (dupeRole) {
             const reply = await msg.reply(`${role.name} (${role.id}) is already designated as \`${TournamentRoleType[dupeRole.roleType]}\``);
             setTimeout(async () => {
-                reply.delete();
-                msg.delete();
+                await Promise.all([
+                    reply.delete(),
+                    msg.delete(),
+                ]);
             }, 5000);
             return;
         }
         const tournamentRole = new TournamentRole();
+        tournamentRole.createdBy = creator;
         tournamentRole.roleID = role.id;
-        tournamentRole.roleType = TournamentRoleType[roleType];
-        tournament.roles!.push(tournamentRole);
+        tournamentRole.roleType = TournamentRoleType[roleType as keyof typeof TournamentRoleType];
+        tournament.roles.push(tournamentRole);
 
         content += `\nDesignated role \`${role.name} (${role.id})\` for \`${roleType}\``;
         await roleMessage.edit(content);
         const reply = await msg.reply(`Designated role \`${role.name} (${role.id})\` for \`${roleType}\``);
         setTimeout(async () => {
-            reply.delete();
-            msg.delete();
+            await Promise.all([
+                reply.delete(),
+                msg.delete(),
+            ]);
         }, 5000);
     });
     roleCollector.on("end", () => timedOut(roleMessage, stopped, "Tournament creation"));
@@ -511,9 +521,9 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
                                 description: "Create a tournament staff channel",
                             },
                             {
-                                label: "Managers",
-                                value: "Managers",
-                                description: "Create a tournament team managers channel",
+                                label: "Captains",
+                                value: "Captains",
+                                description: "Create a tournament team captains channel",
                             },
                             {
                                 label: "Announcements",
@@ -590,8 +600,8 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
         ],
     });
 
-    const componentCollector = m.channel!.createMessageComponentCollector({ filter, time: 6000000 });
-    const channelCollector = m.channel!.createMessageCollector({ filter, time: 6000000 });
+    const componentCollector = m.channel.createMessageComponentCollector({ filter, time: 6000000 });
+    const channelCollector = m.channel.createMessageCollector({ filter, time: 6000000 });
 
     componentCollector.on("collect", async (i: MessageComponentInteraction) => {
         if (i.customId === ids.stop) {
@@ -616,8 +626,8 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
         }
         if (i.customId === ids.channel) {
             const channelTypeMenu = (i as StringSelectMenuInteraction).values[0];
-            const tournamentChannelType = TournamentChannelType[channelTypeMenu];
-            if (tournament.channels!.find(c => c.channelType === tournamentChannelType)) {
+            const tournamentChannelType = TournamentChannelType[channelTypeMenu as keyof typeof TournamentChannelType];
+            if (tournament.channels.find(c => c.channelType === tournamentChannelType)) {
                 await i.reply("A channel of this type has already been designated. If u wanna create another channel of this type, manually create it and then mention it here");
                 setTimeout(async () => (await i.deleteReply()), 5000);
                 return;
@@ -630,6 +640,7 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
                 channelType = ChannelType.GuildForum;
 
             const tournamentChannel = new TournamentChannel();
+            tournamentChannel.createdBy = creator;
             tournamentChannel.channelType = tournamentChannelType;
 
             const channelObject: GuildChannelCreateOptions = {
@@ -648,7 +659,7 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
                         deny: PermissionFlagsBits.ViewChannel,
                     },
                 ];
-                const allowedRoles = tournament.roles!.filter(r => allowedRoleTypes.includes(r.roleType));
+                const allowedRoles = tournament.roles.filter(r => allowedRoleTypes.includes(r.roleType));
                 channelObject.permissionOverwrites.push(...allowedRoles.map(r => {
                     return {
                         id: r.roleID,
@@ -690,7 +701,7 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
             const channel = await m.guild!.channels.create(channelObject);
 
             tournamentChannel.channelID = channel.id;
-            tournament.channels!.push(tournamentChannel);
+            tournament.channels.push(tournamentChannel);
 
             content += `\nCreated channel <#${channel.id}> for \`${channelTypeMenu}\``;
             await channelMessage.edit(content);
@@ -703,19 +714,21 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
         if (stopped)
             return;
 
-        const channel = msg.mentions.channels.first() || m.guild!.channels.cache.get(msg.content.split(" ")[0]);
+        const channel = msg.mentions.channels.first() ?? m.guild!.channels.cache.get(msg.content.split(" ")[0]);
         if (!channel || (channel.type !== ChannelType.GuildText && channel.type !== ChannelType.GuildAnnouncement && channel.type !== ChannelType.GuildForum)) {
             const reply = await msg.reply("Invalid channel");
             setTimeout(async () => {
-                reply.delete();
-                msg.delete();
+                await Promise.all([
+                    reply.delete(),
+                    msg.delete(),
+                ]);
             }, 5000);
             return;
         }
         const channelType = msg.content.split(" ")[1].charAt(0).toUpperCase() + msg.content.split(" ")[1].slice(1);
         if (
             !channelType || 
-            TournamentChannelType[channelType] === undefined || 
+            !(channelType in TournamentChannelType) || 
             (channelType.toLowerCase() === "announcements" && channelType.toLowerCase() === "streamannouncements" && channel.type !== ChannelType.GuildAnnouncement) || 
             (channelType.toLowerCase() === "mappoolqa" && channel.type !== ChannelType.GuildForum) ||
             (channelType.toLowerCase() === "jobboard" && channel.type !== ChannelType.GuildForum) ||
@@ -723,17 +736,21 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
         ) {
             const reply = await msg.reply(`Invalid channel type ${channelType}.\nAnnouncements should be a guild announcement channel\nMappool QA and Job Board should be guild forum channels\nAll other channels should be guild text channels`);
             setTimeout(async () => {
-                reply.delete();
-                msg.delete();
+                await Promise.all([
+                    reply.delete(),
+                    msg.delete(),
+                ]);
             }, 5000);
             return;
         }
-        const dupeChannel = tournament.channels!.find(c => c.channelID === channel.id);
+        const dupeChannel = tournament.channels.find(c => c.channelID === channel.id);
         if (dupeChannel) {
             const reply = await msg.reply(`Channel <#${channel.id}> has already been designated for \`${TournamentChannelType[dupeChannel.channelType]}\``);
             setTimeout(async () => {
-                reply.delete();
-                msg.delete();
+                await Promise.all([
+                    reply.delete(),
+                    msg.delete(),
+                ]);
             }, 5000);
             return;
         }
@@ -741,8 +758,8 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
         const tournamentChannel = new TournamentChannel();
         tournamentChannel.createdBy = creator;
         tournamentChannel.channelID = channel.id;
-        tournamentChannel.channelType = TournamentChannelType[channelType];
-        tournament.channels!.push(tournamentChannel);
+        tournamentChannel.channelType = TournamentChannelType[channelType as keyof typeof TournamentChannelType];
+        tournament.channels.push(tournamentChannel);
 
         const tags = forumTags()[tournamentChannel.channelType];
         if (tags) {
@@ -760,8 +777,10 @@ async function tournamentChannels (m: Message, tournament: Tournament, creator: 
         await channelMessage.edit(content);
         const reply = await msg.reply(`Channel <#${channel.id}> designated for \`${channelType}\``);
         setTimeout(async () => {
-            reply.delete();
-            msg.delete();
+            await Promise.all([
+                reply.delete(),
+                msg.delete(),
+            ]); 
         }, 5000);
     });
     channelCollector.on("end", () => timedOut(channelMessage, stopped, "Tournament creation"));
@@ -802,7 +821,7 @@ async function tournamentCorsace (m: Message, tournament: Tournament) {
         components: [corsaceRow, stop],
     });
     let stopped = false;
-    const componentCollector = m.channel!.createMessageComponentCollector({ filter, time: 6000000 });
+    const componentCollector = m.channel.createMessageComponentCollector({ filter, time: 6000000 });
     componentCollector.on("collect", async (i: MessageComponentInteraction) => {
         if (i.customId === ids.stop) {
             stopped = true;
@@ -831,11 +850,11 @@ async function tournamentSave (m: Message, tournament: Tournament) {
         s.tournament = tournament;
         return s.save();
     }));
-    await Promise.all(tournament.channels!.map(async c => {
+    await Promise.all(tournament.channels.map(async c => {
         c.tournament = tournament;
         return c.save();
     }));
-    await Promise.all(tournament.roles!.map(async r => {
+    await Promise.all(tournament.roles.map(async r => {
         r.tournament = tournament;
         return r.save();
     }));
@@ -855,15 +874,15 @@ async function tournamentSave (m: Message, tournament: Tournament) {
             { name: "Invitational", value: tournament.invitational ? "Yes" : "No", inline: true },
             { name: "Server", value: tournament.server, inline: true }
         )
-        .setTimestamp(new Date)
-        .setAuthor({ name: m.author.username, iconURL: m.member?.avatarURL() ?? undefined });
+        .setTimestamp()
+        .setAuthor({ name: m.author.username, icon_url: m.member?.avatarURL() ?? undefined });
 
     if (tournament.isOpen || tournament.isClosed)
         embed.addFields(
             { name: "Corsace", value: tournament.isOpen ? "Open" : "Closed", inline: true }
         );
 
-    m.reply({ content: "Nice u saved the tournament!!!1\nHere's the tournament embed:", embeds: [embed] });
+    await respond(m, "Nice u saved the tournament!!!1\nHere's the tournament embed:", embed);
 }
 
 const data = new SlashCommandBuilder()
@@ -911,7 +930,7 @@ const data = new SlashCommandBuilder()
             .setMaxValue(16))
     .addIntegerOption(option =>
         option.setName("max_players")
-            .setDescription("The maximum size for a team in the tournament (excl. managers)")
+            .setDescription("The maximum size for a team in the tournament (excl. captains if captain_must_play is false)")
             .setRequired(true)
             .setMinValue(1)
             .setMaxValue(16))
@@ -936,6 +955,10 @@ const data = new SlashCommandBuilder()
     .addBooleanOption(option =>
         option.setName("qualifiers")
             .setDescription("Does the tournament have qualifiers?")
+            .setRequired(true))
+    .addBooleanOption(option =>
+        option.setName("captain_must_play")
+            .setDescription("Can the captain be a non-player? (If yes, not counted in min/max team size)")
             .setRequired(true))
     .addUserOption(option =>
         option.setName("organizer")

@@ -5,21 +5,20 @@ import { BaseTournament } from "./tournament";
 export interface BaseTeam {
     ID: number;
     name: string;
+    avatarURL?: string | null;
 }
 
 export interface TeamList extends BaseTeam {
-    avatarURL?: string | null;
     pp: number;
     rank: number;
     BWS: number;
     members: TeamMember[];
-    isRegistered?: boolean;
 }
 
 export interface Team extends TeamList {
     abbreviation: string;
     timezoneOffset: number;
-    manager: TeamMember;
+    captain: TeamMember;
     invites?: TeamUser[];
     qualifier?: BaseMatchup;
     tournaments?: BaseTournament[];
@@ -32,12 +31,15 @@ export interface TeamUser {
 }
 
 export interface TeamMember extends TeamUser {
-    isManager: boolean;
-    BWS: number;
+    isCaptain: boolean;
+    country: string;
+    rank: number;
 }
 
-// TODO: Add TeamInvite interface as needed
-// export interface TeamInvite extends TeamUser {}
+export interface TeamInvites {
+    teamID: number;
+    invites: TeamUser[];
+}
 
 export function validateTeamText (name: string, abbreviation: string): { name: string, abbreviation: string } | { error: string } {
     if (/^team /i.test(name)) {

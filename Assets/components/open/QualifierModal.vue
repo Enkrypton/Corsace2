@@ -6,7 +6,7 @@
             <div class="qualifier_modal__label qualifier_modal__label--no_shadow">
                 QUALIFIER DATE/TIME
             </div>
-            <div class="team_fields_block">
+            <div>
                 <div 
                     class="qualifier_modal__label--no_shadow"
                     style="text-align: left;"
@@ -15,9 +15,9 @@
                 </div>
                 <div 
                     class="qualifier_modal__label--no_shadow"
-                    style="text-align: right;"
+                    style="text-align: right; margin: 25px 0;"
                 >
-                    Please note that the lobby will start when the manager joins.<br>If the manager is not a member, they cannot play qualifiers.<br>The manager can leave immediately after the bot selects the first map.
+                    Please note that the lobby will start when the captain joins.<br>The captain can leave immediately after the bot selects the first map.
                 </div>
                 <input 
                     v-model="qualifierAt"
@@ -29,7 +29,7 @@
             </div>
         </div>
         <ContentButton
-            v-if="!team?.qualifier"
+            v-if="!teamSync?.qualifier"
             class="content_button--red qualifier_modal__label--no_shadow"
             @click.native="registerTeam"
         >
@@ -46,11 +46,12 @@
 </template>
 
 <script lang="ts">
-import { Vue, Component } from "vue-property-decorator";
+import { Vue, Component, PropSync } from "vue-property-decorator";
 
 import BaseModal from "../BaseModal.vue";
 import ContentButton from "./ContentButton.vue";
 import { namespace } from "vuex-class";
+import { StageType } from "../../../Interfaces/stage";
 import { Tournament } from "../../../Interfaces/tournament";
 import { Team } from "../../../Interfaces/team";
 import { toLocalISOString } from "../../../Server/utils/dateParse";
@@ -64,12 +65,12 @@ const openModule = namespace("open");
     },
 })
 export default class QualifierModal extends Vue {
+    @PropSync("team", { type: Object, required: true }) teamSync!: Team | null; 
 
     @openModule.State tournament!: Tournament | null;
-    @openModule.State team!: Team | null;
 
     get qualifierStage () {
-        return this.tournament?.stages.find(s => s.stageType === 0) || null;
+        return this.tournament?.stages.find(s => s.stageType === StageType.Qualifiers) ?? null;
     }
 
     get timeZone () {
@@ -77,11 +78,11 @@ export default class QualifierModal extends Vue {
         return dateString[dateString.length - 1];
     }
 
-    qualifierAt = toLocalISOString(new Date).slice(0, 16);
+    qualifierAt = toLocalISOString(new Date()).slice(0, 16);
     loading = false;
 
     async registerTeam () {
-        if (!this.team || this.loading)
+        if (!this.teamSync || this.loading)
             return;
 
         this.loading = true;
@@ -97,17 +98,17 @@ export default class QualifierModal extends Vue {
             return;
         }
 
-        if (!confirm(`Are you sure you want to register ${this.team.name} to the Corsace Open?\nAny player or manager in this team will not be able to join another team and register for this tournament.\nYour roster is considered set after you play the qualifier.`)) {
+        if (!confirm(`Are you sure you want to register ${this.teamSync.name} to the Corsace Open?\nAny player or captain in this team will not be able to join another team and register for this tournament.\nYour roster is considered set after you play the qualifier.`)) {
             this.loading = false;
             return;
         }
 
-        const { data: res } = await this.$axios.post(`/api/team/${this.team.ID}/register`, {
+        const { data: res } = await this.$axios.post(`/api/team/${this.teamSync.ID}/register`, {
             tournamentID: this.tournament?.ID,
             qualifierAt: date.getTime(),
         });
 
-        if (res.error)
+        if (!res.success)
             alert(res.error);
 
         this.loading = false;
@@ -117,7 +118,7 @@ export default class QualifierModal extends Vue {
     }
 
     async editQualifier () {
-        if (!this.team || this.loading)
+        if (!this.teamSync || this.loading)
             return;
 
         this.loading = true;
@@ -128,7 +129,7 @@ export default class QualifierModal extends Vue {
             return;
         }
 
-        if (date.getTime() === this.team.qualifier?.date.getTime()) {
+        if (date.getTime() === this.teamSync.qualifier?.date.getTime()) {
             alert("You have not changed the qualifier time.");
             this.loading = false;
             return;
@@ -147,12 +148,12 @@ export default class QualifierModal extends Vue {
             return;
         }
 
-        const { data: res } = await this.$axios.post(`/api/team/${this.team.ID}/qualifier`, {
+        const { data: res } = await this.$axios.post(`/api/team/${this.teamSync.ID}/qualifier`, {
             tournamentID: this.tournament?.ID,
             qualifierAt: date.getTime(),
         });
         
-        if (res.error)
+        if (!res.success)
             alert(res.error);
 
         this.loading = false;
@@ -166,12 +167,14 @@ export default class QualifierModal extends Vue {
 
 <style lang="scss">
 .qualifier_modal {
+
     &__row {
         display: flex;
         margin-bottom: 2.5rem;
     }
 
     &__label {
+        align-self: center;
         width: 250px;
         padding-right: 60px;
         color: #F24141;

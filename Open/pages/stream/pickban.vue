@@ -4,7 +4,7 @@
         class="pickban"
     >
         <div class="pickban__streamTitle">
-            ROUND ROBIN
+            {{ matchup.stage?.name.toUpperCase() || '' }}
         </div>
         <div class="pickban__mapName">
             <div class="pickban__diamond pickban__mapName__diamond" />
@@ -24,7 +24,7 @@
             class="pickban__team1"
         >
             <div class="pickban__team1_abbreviation">
-                {{ matchup.team1.abbreviation }}
+                {{ matchup.team1.abbreviation.toUpperCase() }}
             </div>
             <div class="pickban__team1_notMembers">
                 <div 
@@ -66,8 +66,8 @@
                     >
                         <path
                             d="M 31 22 H 0 L 16 0 H 48 L 31 22 Z"
-                            :fill="matchup.team1Score >= n ? '#5BBCFA' : undefined"
-                            :stroke="matchup.team1Score >= n ? undefined : '#5BBCFA'"
+                            :fill="matchup.team2Score >= n ? '#5BBCFAFF' : '#5BBCFA00'"
+                            :stroke="matchup.team2Score >= n ? '#5BBCFA00' : '#5BBCFAFF'"
                         />
                     </svg>
                 </div>
@@ -77,19 +77,19 @@
                     <div 
                         class="pickban__team1_members_member_avatar"
                         :style="{
-                            'background-image': `url(https://a.ppy.sh/${matchup.team1.manager.osuID})`,
+                            'background-image': `url(https://a.ppy.sh/${matchup.team1.captain.osuID})`,
                         }"
                     />
                     <div class="pickban__team1_members_member_username">
-                        {{ matchup.team1.manager.username.toUpperCase() }}
+                        {{ matchup.team1.captain.username.toUpperCase() }}
                     </div>
                     <div class="pickban__team1_members_member_BWS">
-                        MANAGER
+                        CAPTAIN
                     </div>
-                    <div class="pickban__team1_members_member_manager" />
+                    <div class="pickban__team1_members_member_captain" />
                 </div>
                 <div 
-                    v-for="member in matchup.team1.members.filter(member => !member.isManager)"
+                    v-for="member in matchup.team1.members.filter(member => !member.isCaptain)"
                     :key="member.ID"
                     class="pickban__team1_members_member"
                 >
@@ -113,7 +113,7 @@
             class="pickban__team2"
         >
             <div class="pickban__team2_abbreviation">
-                {{ matchup.team2.abbreviation }}
+                {{ matchup.team2.abbreviation.toUpperCase() }}
             </div>
             <div class="pickban__team2_notMembers">
                 <div 
@@ -155,8 +155,8 @@
                     >
                         <path
                             d="M 31 22 H 0 L 16 0 H 48 L 31 22 Z"
-                            :fill="matchup.team2Score >= n ? '#F24141' : undefined"
-                            :stroke="matchup.team2Score >= n ? undefined : '#F24141'"
+                            :fill="matchup.team1Score >= n ? '#F24141FF' : '#F2414100'"
+                            :stroke="matchup.team1Score >= n ? '#F2414100' : '#F24141FF'"
                         />
                     </svg>
                 </div>
@@ -166,19 +166,19 @@
                     <div 
                         class="pickban__team2_members_member_avatar"
                         :style="{
-                            'background-image': `url(https://a.ppy.sh/${matchup.team2.manager.osuID})`,
+                            'background-image': `url(https://a.ppy.sh/${matchup.team2.captain.osuID})`,
                         }"
                     />
                     <div class="pickban__team2_members_member_username">
-                        {{ matchup.team2.manager.username.toUpperCase() }}
+                        {{ matchup.team2.captain.username.toUpperCase() }}
                     </div>
                     <div class="pickban__team2_members_member_BWS">
-                        MANAGER
+                        CAPTAIN
                     </div>
-                    <div class="pickban__team2_members_member_manager" />
+                    <div class="pickban__team2_members_member_captain" />
                 </div>
                 <div 
-                    v-for="member in matchup.team2.members.filter(member => !member.isManager)"
+                    v-for="member in matchup.team2.members.filter(member => !member.isCaptain)"
                     :key="member.ID"
                     class="pickban__team2_members_member"
                 >
@@ -204,6 +204,7 @@
 <script lang="ts">
 import { Vue, Component } from "vue-property-decorator";
 import { namespace } from "vuex-class";
+import { MapStatus } from "../../../Interfaces/matchup";
 import MappoolMapStats from "../../../Assets/components/open/MappoolMapStats.vue";
 
 import { Matchup as MatchupInterface } from "../../../Interfaces/matchup";
@@ -227,10 +228,10 @@ export default class Pickban extends Vue {
     picking = false;
 
     get pickedMaps () {
-        if (!this.matchup?.maps)
+        if (!this.matchup?.sets?.[this.matchup.sets.length - 1]?.maps)
             return [];
 
-        return this.matchup.maps.filter(map => map.status === 2).sort((a, b) => a.order - b.order);
+        return this.matchup.sets[this.matchup.sets.length - 1].maps!.filter(map => map.status === MapStatus.Picked).sort((a, b) => a.order - b.order);
     }
 
     get latestMap () {
@@ -245,9 +246,9 @@ export default class Pickban extends Vue {
             return null;
 
         if (this.pickedMaps.length % 2 === 0)
-            return this.matchup?.first;
+            return this.matchup?.sets?.[this.matchup.sets.length - 1]?.first;
     
-        return this.matchup?.team1?.ID === this.matchup?.first?.ID ? this.matchup?.team2 : this.matchup?.team1;
+        return this.matchup?.team1?.ID === this.matchup?.sets?.[this.matchup.sets.length - 1]?.first?.ID ? this.matchup?.team2 : this.matchup?.team1;
     }
 
     get slotMod (): string {
@@ -273,8 +274,8 @@ export default class Pickban extends Vue {
         if (typeof matchupID !== "string")
             return;
 
-        const { data } = await this.$axios.get(`/api/matchup/${matchupID}`);
-        if (data.error)
+        const { data } = await this.$axios.get<{ matchup: MatchupInterface }>(`/api/matchup/${matchupID}`);
+        if (!data.success)
             return;
 
         this.matchup = data.matchup;
@@ -496,8 +497,8 @@ export default class Pickban extends Vue {
                     color: #EBEBEB;
                 }
 
-                &_manager {
-                    background-image: url("../../../Assets/img/site/open/team/managerBlack.svg");
+                &_captain {
+                    background-image: url("../../../Assets/img/site/open/team/captainBlack.svg");
                     background-size: cover;
                     background-position: center;
                     background-repeat: no-repeat;

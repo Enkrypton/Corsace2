@@ -185,7 +185,7 @@ export default class ScoresView extends Vue {
     @openModule.State scores!: MatchupScore[] | null;
     @openModule.State teamList!: TeamList[] | null;
 
-    updateTooltipPosition (event) {
+    updateTooltipPosition (event: MouseEvent) {
         const x = event.clientX;
         const y = event.clientY;
 
@@ -216,12 +216,12 @@ export default class ScoresView extends Vue {
             return null;
         return this.selectedMappool?.slots.filter(map => 
             this.mapSearchID.toLowerCase().includes(map.acronym.toLowerCase())
-        )[0]?.maps[+(this.mapSearchID.match(/(\d+)/)?.[0] || 1) - 1];
+        )[0]?.maps[+(this.mapSearchID.match(/(\d+)/)?.[0] ?? 1) - 1];
     }
     
     async mounted () {
         this.loading = true;
-        if (this.tournament)
+        if (this.tournament && (!this.teamList || this.teamList.length === 0))
             await this.$store.dispatch("open/setTeamList", this.tournament.ID);
         this.loading = false;
     }
@@ -359,7 +359,6 @@ export default class ScoresView extends Vue {
         border-collapse: collapse;
         box-sizing: border-box;
         white-space: nowrap;
-        display: block;
         overflow-x: auto;
 
         &::-webkit-scrollbar {

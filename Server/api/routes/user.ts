@@ -1,16 +1,26 @@
-import Router from "@koa/router";
-import { OAuth, User } from "../../../Models/user";
+import { CorsaceRouter } from "../../corsaceRouter";
+import { UserAuthenticatedState } from "koa";
+import { DiscordOAuth, User } from "../../../Models/user";
 import { UsernameChange } from "../../../Models/usernameChange";
-import { isCorsace, isHeadStaff, isLoggedIn, isLoggedInDiscord } from "../../middleware";
+import { isCorsace, isHeadStaff, isLoggedIn } from "../../middleware";
+import { UserInfo, UserMCAInfo } from "../../../Interfaces/user";
 
-const userRouter = new Router();
+const userRouter  = new CorsaceRouter<UserAuthenticatedState>();
 
-userRouter.get("/", isLoggedIn, async (ctx) => {
-    ctx.body = await ctx.state.user.getInfo();
+userRouter.$use(isLoggedIn);
+
+userRouter.$get<{ user: UserInfo }>("/", async (ctx) => {
+    ctx.body = {
+        success: true,
+        user: await ctx.state.user.getInfo(),
+    };
 });
 
-userRouter.get("/mca", isLoggedIn, async (ctx) => {
-    ctx.body = await ctx.state.user.getMCAInfo();
+userRouter.$get<{ user: UserMCAInfo }>("/mca", async (ctx) => {
+    ctx.body = {
+        success: true,
+        user: await ctx.state.user.getMCAInfo(),
+    };
 });
 
 interface connectBody {
@@ -24,10 +34,11 @@ interface connectBody {
     };
 }
 
-userRouter.post("/connect", isLoggedInDiscord, isCorsace, async (ctx) => {
+userRouter.$post<{ user: UserInfo }>("/connect", isCorsace, async (ctx) => {
     const body: connectBody = ctx.request.body;
     if (!body.osu || !body.discord)
-        return ctx.body = { 
+        return ctx.body = {
+            success: false,
             error: "Missing parameters",
         };
 
@@ -42,32 +53,40 @@ userRouter.post("/connect", isLoggedInDiscord, isCorsace, async (ctx) => {
     });
 
     if (!user)
-        return ctx.body = { 
+        return ctx.body = {
+            success: false,
             error: "User not found",
         };
 
-    user.discord = discord as OAuth;
+    user.discord = discord as DiscordOAuth;
 
     await user.save();
 
     ctx.body = {
         success: true,
-        user,
+        user: await user.getInfo(),
     };
 });
 
-userRouter.post("/username/delete", isHeadStaff, async (ctx) => {
+userRouter.$post<{ user: UserInfo }>("/username/delete", isHeadStaff, async (ctx) => {
     const body = ctx.request.body;
     if (!body.ID || !body.username)
-        return ctx.body = { 
+        return ctx.body = {
+            success: false,
             error: "Missing parameters",
         };
     
-    const user = await User.findOneOrFail({
+    const user = await User.findOne({
         where: {
             ID: body.ID,  
         },
     });
+    if (!user) {
+        return ctx.body = {
+            success: false,
+            error: `Could not find a user with the corsace ID ${body.ID}.`,
+        };
+    }
 
     if (user.osu.username === body.username) {
         const otherNames = await UsernameChange.find({  
@@ -78,7 +97,8 @@ userRouter.post("/username/delete", isHeadStaff, async (ctx) => {
             },
         });
         if (otherNames.length === 0) {
-            return ctx.body = { 
+            return ctx.body = {
+                success: false,
                 error: "No remaining username to change to.",
             };
         }
@@ -87,11 +107,11 @@ userRouter.post("/username/delete", isHeadStaff, async (ctx) => {
         await otherNames[0].remove();
         return ctx.body = {
             success: true,
-            user,
+            user: await user.getInfo(),
         };
     }
 
-    const name = await UsernameChange.findOneOrFail({
+    const name = await UsernameChange.findOne({
         where: {  
             user: {
                 ID: user.ID,
@@ -99,10 +119,16 @@ userRouter.post("/username/delete", isHeadStaff, async (ctx) => {
             name: body.username,
         },
     });
+    if (!name) {
+        return ctx.body = {
+            success: false,
+            error: `Could not find a username change for corsace ID ${user.ID} username ${user.osu.username} with a previous username of ${body.username}.`,
+        };
+    }
     await name.remove();
     return ctx.body = {
         success: true,
-        user,
+        user: await user.getInfo(),
     };
 });
 

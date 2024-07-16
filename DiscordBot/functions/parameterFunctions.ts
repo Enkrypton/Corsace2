@@ -2,6 +2,8 @@ import { ChatInputCommandInteraction, Message, ThreadChannel } from "discord.js"
 import respond from "./respond";
 import { threadNameRegex } from "./tournamentFunctions/getCustomThread";
 
+type AtLeastTwo<T> = [T, T, ...T[]];
+
 interface ParamTypeMap {
     boolean: boolean | null;
     integer: number | null;
@@ -16,13 +18,13 @@ const slashCommandParameterMethods: { [K in keyof ParamTypeMap]: (m: ChatInputCo
     boolean: (m, name) => m.options.getBoolean(name),
     integer: (m, name) => m.options.getInteger(name),
     number: (m, name) => m.options.getNumber(name),
-    string: (m, name) => m.options.getString(name)?.trim() || null,
-    channel: (m, name) => m.options.getChannel(name)?.id || null,
-    role: (m, name) => m.options.getRole(name)?.id || null,
+    string: (m, name) => m.options.getString(name)?.trim() ?? null,
+    channel: (m, name) => m.options.getChannel(name)?.id ?? null,
+    role: (m, name) => m.options.getRole(name)?.id ?? null,
     // Add more methods as needed
 };
 
-const messageCommandParameterMethods: { [K in keyof ParamTypeMap]: (name: string | null | undefined, parameterOption?: parameterOptions) => ParamTypeMap[K] | undefined } = {
+const messageCommandParameterMethods: { [K in keyof ParamTypeMap]: <T>(name: string | null | undefined, parameterOption?: parameterOptions<T>) => ParamTypeMap[K] | undefined } = {
     boolean: (name, parameterOption) => name && parameterOption ? 
         name.toLowerCase().startsWith(`-${parameterOption.name.toLowerCase()}`) || 
         name.toLowerCase().startsWith(`-${parameterOption.shortName?.toLowerCase()}`) : 
@@ -37,13 +39,13 @@ const messageCommandParameterMethods: { [K in keyof ParamTypeMap]: (name: string
 
 type customHandlerType = (m: Message | ChatInputCommandInteraction, index: number) => string | number | boolean | Date | null | undefined;
 
-interface parameterOptions {
-    name: string,
+interface parameterOptions<T> {
+    name: Extract<keyof T, string>,
     paramType: keyof ParamTypeMap;
     shortName?: string,
     optional?: boolean,
     customHandler?: customHandlerType,
-    postProcess?: (parameter: string) => { [key: string]: string | number | undefined } | undefined,
+    postProcess?: (parameter: string) => Partial<T> | undefined,
 }
 
 const quotes = ["'", "\"", "`"];
@@ -77,7 +79,7 @@ export function separateArgs (str: string) {
     return args;
 }
 
-function extractThreadParameter (channel: ThreadChannel, parameterOption: parameterOptions): string | undefined {
+function extractThreadParameter<T> (channel: ThreadChannel, parameterOption: parameterOptions<T>): string | undefined {
     const threadName = channel.name;
     const threadNameMatch = threadName.match(threadNameRegex);
     if (!threadNameMatch)
@@ -91,7 +93,24 @@ function extractThreadParameter (channel: ThreadChannel, parameterOption: parame
     return;
 }
 
-export function extractParameter (m: Message | ChatInputCommandInteraction, parameterOption: parameterOptions, index: number) {
+/**
+ * Extracts a parameter from a message or slash command interaction.
+ * 
+ * **NOTE:** For extracting 2 or more parameters, use `extractParameters` instead.
+ * 
+ * @template T The type of the parameter to extract.
+ * @param m The message or slash command interaction to extract the parameter from.
+ * @param parameterOption The options for the parameter to extract.
+ * @param index The index of the parameter to extract.
+ * @returns The extracted parameter with the specified type or undefined if the parameter is missing or invalid.
+ * @example
+ * const param = await extractParameter<parameters>(m, { name: "role", paramType: "string" }, 1);
+ * if (!param)
+ *    return;
+ * 
+ * const { role } = param;
+ */
+export function extractParameter<T> (m: Message | ChatInputCommandInteraction, parameterOption: parameterOptions<T>, index: number) {
     if (parameterOption.customHandler)
         return parameterOption.customHandler(m, index);
 
@@ -104,14 +123,14 @@ export function extractParameter (m: Message | ChatInputCommandInteraction, para
     return m.options.get(parameterOption.name)?.value;
 }
 
-function missingParameter (m: Message | ChatInputCommandInteraction, parameterOption: parameterOptions) {
+async function missingParameter<T> (m: Message | ChatInputCommandInteraction, parameterOption: parameterOptions<T>) {
     if (parameterOption.optional)
         return false;
-    respond(m, `Missing or invalid parameter \`${parameterOption.name}\``);
+    await respond(m, `Missing or invalid parameter \`${parameterOption.name}\``);
     return true;
 }
 
-function invalidParameter (param: any | undefined | null, optional?: boolean) {
+function invalidParameter (param: any, optional?: boolean) {
     if (optional) return false;
 
     return param === undefined || 
@@ -121,9 +140,30 @@ function invalidParameter (param: any | undefined | null, optional?: boolean) {
         (param instanceof Date && isNaN(param.getTime()));
 }
 
-export function extractParameters<T> (m: Message | ChatInputCommandInteraction, parameterOptions: parameterOptions[]) {
-    const parameters: T = {} as T;
+/**
+ * Extracts 2 or more parameters from a message or slash command interaction.
+ * 
+ * **NOTE:** For extracting only 1 parameter, use `extractParameter` instead.
+ * 
+ * @template T The type of the parameters to extract.
+ * @param m The message or slash command interaction to extract parameters from.
+ * @param parameterOptions The options for the parameters to extract.
+ * @returns The extracted parameters with the specified types or undefined if a parameter is missing or invalid.
+ * @example
+ * const params = await extractParameters<parameters>(m, [
+ *      { name: "role", paramType: "role" },
+ *      { name: "remove", shortName: "r", paramType: "boolean", optional: true },
+ *      { name: "role_type", paramType: "string", optional: true },
+ * ]);
+ * if (!params)
+ *      return;
+ * 
+ * const { role, remove, role_type } = params;
+ */
+export async function extractParameters<T> (m: Message | ChatInputCommandInteraction, parameterOptions: AtLeastTwo<parameterOptions<T>>) {
+    const parameters: Partial<T> = {};
     let useThreadName = false;
+    let filteredParameterOptions: parameterOptions<T>[] = parameterOptions;
 
     if (
         m instanceof Message && 
@@ -134,11 +174,11 @@ export function extractParameters<T> (m: Message | ChatInputCommandInteraction, 
         useThreadName = true;
         const nonPoolSlotFilter = parameterOptions.filter(p => p.name !== "pool" && p.name !== "slot");
         const poolSlotFilter = parameterOptions.filter(p => p.name === "pool" || p.name === "slot");
-        parameterOptions = [...nonPoolSlotFilter, ...poolSlotFilter];
+        filteredParameterOptions = [...nonPoolSlotFilter, ...poolSlotFilter];
     }
     
     let index = 1;
-    for (const parameterOption of parameterOptions) {
+    for (const parameterOption of filteredParameterOptions) {
         let parameter = extractParameter(m, parameterOption, index);
 
         if (parameter !== undefined && parameterOption.name === "pool")
@@ -148,7 +188,7 @@ export function extractParameters<T> (m: Message | ChatInputCommandInteraction, 
             parameter = extractThreadParameter(m.channel, parameterOption);
 
         if (invalidParameter(parameter, parameterOption.optional)) {
-            missingParameter(m, parameterOption);
+            await missingParameter(m, parameterOption);
             return;
         }
 
@@ -163,18 +203,18 @@ export function extractParameters<T> (m: Message | ChatInputCommandInteraction, 
                     Object.values(postProcess).some(v => invalidParameter(v))
                 )
             ) {
-                missingParameter(m, parameterOption);
+                await missingParameter(m, parameterOption);
                 return;
             }
 
-            for (const key in postProcess) {
+            for (const key in postProcess)
                 parameters[key] = postProcess[key];
-            }
+
             continue;
         }
         
-        parameters[parameterOption.name] = parameter;
+        parameters[parameterOption.name] = parameter as T[typeof parameterOption.name];
     }
 
-    return parameters;
+    return parameters as T;
 }

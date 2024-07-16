@@ -1,4 +1,4 @@
-import { Message, EmbedBuilder, SlashCommandBuilder, ChatInputCommandInteraction,  TextChannel } from "discord.js";
+import { Message, SlashCommandBuilder, ChatInputCommandInteraction } from "discord.js";
 import { Command } from "../../index";
 import { loginResponse } from "../../../functions/loginResponse";
 import { extractParameters } from "../../../functions/parameterFunctions";
@@ -12,6 +12,7 @@ import getStaff from "../../../functions/tournamentFunctions/getStaff";
 import channelID from "../../../functions/channelID";
 import { Matchup } from "../../../../Models/tournaments/matchup";
 import { discordStringTimestamp } from "../../../../Server/utils/dateParse";
+import { EmbedBuilder } from "../../../functions/embedBuilder";
 
 const refValues = ["referee", "ref", "r", "referees", "refs", "rs"] as const;
 const commentValues = ["commentator", "comment", "c", "commentators", "comments", "cs"] as const;
@@ -43,7 +44,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
         await m.deferReply();
 
-    const params = extractParameters<parameters>(m, [
+    const params = await extractParameters<parameters>(m, [
         { name: "filter", paramType: "string" },
         { name: "tournament", paramType: "string", optional: true },
         { name: "user", paramType: "string", customHandler: extractTargetText, optional: true },
@@ -76,10 +77,10 @@ async function run (m: Message | ChatInputCommandInteraction) {
     const matchupsQ = Matchup
         .createQueryBuilder("matchup")
         .leftJoinAndSelect("matchup.team1", "team1")
-        .leftJoinAndSelect("team1.manager", "team1manager")
+        .leftJoinAndSelect("team1.captain", "team1captain")
         .leftJoinAndSelect("team1.members", "team1members")
         .leftJoinAndSelect("matchup.team2", "team2")
-        .leftJoinAndSelect("team2.manager", "team2manager")
+        .leftJoinAndSelect("team2.captain", "team2captain")
         .leftJoinAndSelect("team2.members", "team2members")
         .innerJoinAndSelect("matchup.stage", "stage")
         .innerJoinAndSelect("stage.tournament", "tournament")
@@ -94,7 +95,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     else if (filter === "unassigned")
         matchupsQ.andWhere("referee.ID IS NULL OR streamer.ID IS NULL OR (streamer.ID IS NOT NULL AND commentators.ID IS NULL)");
     else if (filter === "team")
-        matchupsQ.andWhere("team1manager.ID = :userID OR team2manager.ID = :userID OR team1members.ID = :userID OR team2members.ID = :userID", { userID: user.ID });
+        matchupsQ.andWhere("team1captain.ID = :userID OR team2captain.ID = :userID OR team1members.ID = :userID OR team2members.ID = :userID", { userID: user.ID });
     else if (isReferee(filter as referee))
         matchupsQ.andWhere("referee.ID IS NULL");
     else if (isStreamer(filter as streamer))
@@ -105,7 +106,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     const matchups = await matchupsQ.getMany();
 
     if (matchups.length === 0) {
-        await respond(m, `No matchups found${filter === "assigned" ? " with u as a ref streamer or comm" : filter === "unassigned" ? " that r unassigned" : filter === "team" ? " with u as a team member/manager" : ""}`);
+        await respond(m, `No matchups found${filter === "assigned" ? " with u as a ref streamer or comm" : filter === "unassigned" ? " that r unassigned" : filter === "team" ? " with u as a team member/captain" : ""}`);
         return;
     }
     
@@ -113,11 +114,9 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
     const embed = new EmbedBuilder()
         .setTitle("Matchups")
-        .setDescription(`Here are the current matchups${filter === "assigned" ? " with u as a ref streamer or comm" : filter === "unassigned" ? " that r unassigned" : filter === "team" ? " with u as a team member/manager" : ""}`)
-        .setTimestamp(new Date())
-        .setFields();
+        .setDescription(`Here are the current matchups${filter === "assigned" ? " with u as a ref streamer or comm" : filter === "unassigned" ? " that r unassigned" : filter === "team" ? " with u as a team member/captain" : ""}`)
+        .setTimestamp();
 
-    let replied = false;
     for (const matchup of matchups) {
         const team1 = matchup.team1 ? `${matchup.team1.name} (${matchup.team1.abbreviation})` : "TBD";
         const team2 = matchup.team2 ? `${matchup.team2.name} (${matchup.team2.abbreviation})` : "TBD";
@@ -133,24 +132,9 @@ async function run (m: Message | ChatInputCommandInteraction) {
                     inline: true,
                 }
             );
-
-        if (embed.data.fields!.length !== 25)
-            continue;
-
-        if (!replied) {
-            await respond(m, undefined, [embed]);
-            replied = true;
-        } else
-            await (m.channel as TextChannel).send({ embeds: [embed] });
-        embed.data.fields = [];
     }
-
-    if (!replied || embed.data.fields!.length > 0) {
-        if (embed.data.fields!.length === 0)
-            embed.addFields({ name: "No Matchups Found", value: "No matchups found with the given parameters GJ ."});
         
-        replied ? await respond(m, undefined, [embed]) : await m.channel?.send({ embeds: [embed] });
-    }
+    await respond(m, undefined, embed);
 }
 
 const data = new SlashCommandBuilder()

@@ -46,5 +46,6 @@ export async function getLink (m: Message | ChatInputCommandInteraction, optionN
                 link = newLink;
         }
     }
+
     return link;
 }

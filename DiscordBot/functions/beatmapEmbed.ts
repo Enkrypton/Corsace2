@@ -1,18 +1,19 @@
-import { EmbedBuilder, EmbedData } from "discord.js";
 import { ApprovalStatus, Beatmap, BeatmapScore, Mode, Score, UserScore } from "nodesu";
-import { acronymtoMods, modsToAcronym } from "../../Interfaces/mods";
+import { acronymtoMods, applyMods, modsToAcronym } from "../../Interfaces/mods";
 import { User } from "../../Models/user";
 import { discordGuild } from "../../Server/discord";
 import { osuClient } from "../../Server/osu";
 import modeColour from "./modeColour";
 import ppCalculator from "./ppCalculator";
+import { EmbedBuilder } from "./embedBuilder";
 
-// TODO: Implement isRecent
+// TODO: Implement isRecent and remove the eslint disable rule
 export default async function beatmapEmbed (beatmap: Beatmap, mods: string, user: User, missCount?: number, userScore?: UserScore, isRecent?: boolean): Promise<EmbedBuilder>;
 export default async function beatmapEmbed (beatmap: Beatmap, mods: string, set: Beatmap[], missCount?: number): Promise<EmbedBuilder>;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function beatmapEmbed (beatmap: Beatmap, mods: string, setorUser: Beatmap[] | User, missCount?: number, userScore?: UserScore, isRecent?: boolean): Promise<EmbedBuilder> {
 
-    const embedMsg = defaultBeatmapEmbed(beatmap, setorUser instanceof User ? false : true);
+    let embed = defaultBeatmapEmbed(applyMods(beatmap, mods), setorUser instanceof User ? false : true);
 
     const totalHits = beatmap.countNormal + beatmap.countSlider + beatmap.countSpinner;
 
@@ -34,18 +35,18 @@ export default async function beatmapEmbed (beatmap: Beatmap, mods: string, seto
             mapCompletion = `**${(100.0 * scoreHits / totalHits).toFixed(2)}%** completed \n`;
         else {
             const bestScores = (await osuClient.user.getBest(user.osu.userID, Mode.all, 100)) as UserScore[];
-            for (const i in bestScores) {
+            for (let i = 0; i < bestScores.length; i++) {
                 const bestScore = bestScores[i];
                 if (bestScore.score === score.score && bestScore.beatmapId === score.beatmapId) {
-                    mapCompletion += `**#${parseInt(i) + 1}** in top performances! \n`;
+                    mapCompletion += `**#${i + 1}** in top performances! \n`;
                     break;
                 }
             }
             const beatmapScores = (await osuClient.scores.get(score.beatmapId, Mode.all, 100)) as BeatmapScore[];
-            for (const i in beatmapScores) {
+            for (let i = 0; i < beatmapScores.length; i++) {
                 const beatmapScore = beatmapScores[i];
                 if (beatmapScore.score === score.score && beatmapScore.userId === score.userId) {
-                    mapCompletion += `**#${parseInt(i) + 1}** on leaderboard! \n`;
+                    mapCompletion += `**#${i + 1}** on leaderboard! \n`;
                     break;
                 }
             }
@@ -84,17 +85,19 @@ export default async function beatmapEmbed (beatmap: Beatmap, mods: string, seto
             pp = `**${score.pp.toFixed(2)}pp**/${ppCalculator(beatmap, FCVersion).toFixed(2)}pp `;
         }
 
-        embedMsg.title = `${beatmap.artist} - ${beatmap.title} [${beatmap.version}] by ${beatmap.creator}`;
-        embedMsg.url = `https://osu.ppy.sh/beatmaps/${beatmap.id}`;
-        embedMsg.author = {
-            url: `https://osu.ppy.sh/users/${user.osu.userID}`,
-            name: user.osu.username,
-            iconURL: `${user.osu.avatar}`,
-        };
-        embedMsg.description += "\n" + 
-            scoreRank + scorePrint + scoreMod + combo + acc + replay + "\n" +
-            mapCompletion + "\n" +
-            pp + hits + "\n" + "\n";
+        embed = embed
+            .setTitle(`${beatmap.artist} - ${beatmap.title} [${beatmap.version}] by ${beatmap.creator}`)
+            .setDescription(embed.embed.description + "\n" + 
+                scoreRank + scorePrint + scoreMod + combo + acc + replay + "\n" +
+                mapCompletion + "\n" +
+                pp + hits + "\n" + "\n"
+            )
+            .setURL(`https://osu.ppy.sh/beatmaps/${beatmap.beatmapId}`)
+            .setAuthor({
+                url: `https://osu.ppy.sh/users/${user.osu.userID}`,
+                name: user.osu.username,
+                icon_url: `${user.osu.avatar}`,
+            });
     } else {
         // Get extra beatmap information
         const set = setorUser;
@@ -106,7 +109,7 @@ export default async function beatmapEmbed (beatmap: Beatmap, mods: string, seto
         // Not sure if there's a better way to get this
         let rankStatus = "Unknown";
         for (const status of Object.keys(ApprovalStatus)) {
-            if (beatmap.approved === ApprovalStatus[status]) {
+            if (beatmap.approved === ApprovalStatus[status as keyof typeof ApprovalStatus]) {
                 rankStatus = `${status[0].toUpperCase()}${status.substring(1)}`; 
             }
         }
@@ -157,25 +160,28 @@ export default async function beatmapEmbed (beatmap: Beatmap, mods: string, seto
         const ppTextHeader = `**[${beatmap.version}]** with mods: **${mods}**`;
         const ppText = `**100%:** ${Math.floor(ppCalculator(beatmap, score100))}pp | **99%:** ${Math.floor(ppCalculator(beatmap, score99))}pp | **98%:** ${Math.floor(ppCalculator(beatmap, score98))}pp | **97%:** ${Math.floor(ppCalculator(beatmap, score97))}pp | **95%:** ${Math.floor(ppCalculator(beatmap, score95))}pp`;
 
-        embedMsg.author = {
-            url: `https://osu.ppy.sh/beatmaps/${beatmap.beatmapId}`,
-            name: `${beatmap.artist} - ${beatmap.title} by ${beatmap.creator}`,
-            iconURL: `https://a.ppy.sh/${beatmap.creatorId}`,
-        };
-        embedMsg.description += status + "\n" +
-            download + "\n" +
-            diffs + "\n" + "\n" +
-            ppTextHeader + "\n" +
-            ppText;
-        embedMsg.footer = {
-            text: `Corsace | https://corsace.io`,
-        };
+        embed = embed
+            .setAuthor({
+                name: `${beatmap.artist} - ${beatmap.title} by ${beatmap.creator}`,
+                icon_url: `https://a.ppy.sh/${beatmap.creatorId}`,
+                url: `https://osu.ppy.sh/beatmaps/${beatmap.beatmapId}`,
+            })
+            .setDescription(embed.embed.description +
+                status + "\n" +
+                download + "\n" +
+                diffs + "\n" + "\n" +
+                ppTextHeader + "\n" +
+                ppText
+            )
+            .setFooter({
+                text: `Corsace | https://corsace.io`,
+            });
     }
 
-    return new EmbedBuilder(embedMsg);
+    return embed;
 }
 
-function defaultBeatmapEmbed (beatmap: Beatmap, addFC: boolean): EmbedData {
+function defaultBeatmapEmbed (beatmap: Beatmap, addFC: boolean): EmbedBuilder {
     // Obtain beatmap information
     const totalMinutes = Math.floor(beatmap.totalLength / 60);
     let totalSeconds = `${Math.round(beatmap.totalLength % 60)}`;
@@ -195,14 +201,11 @@ function defaultBeatmapEmbed (beatmap: Beatmap, addFC: boolean): EmbedData {
     const mapStats = `**CS:** ${beatmap.CS.toFixed(2)} **AR:** ${beatmap.AR.toFixed(2)} **OD:** ${beatmap.OD.toFixed(2)} **HP:** ${beatmap.HP.toFixed(2)}`;
     const mapObjs = `**Circles:** ${beatmap.countNormal} **Sliders:** ${beatmap.countSlider} **Spinners:** ${beatmap.countSpinner}`;
 
-    return {
-        description: sr + "\n" +
+    return new EmbedBuilder()
+        .setDescription(sr + "\n" +
 			length + bpm + combo + "\n" +
 			mapStats + "\n" +
-			mapObjs + "\n",
-        color: modeColour(beatmap.mode),
-        thumbnail: {
-            url: `https://b.ppy.sh/thumb/${beatmap.beatmapSetId}l.jpg`,
-        },
-    };
+			mapObjs + "\n")
+        .setColor(modeColour(beatmap.mode))
+        .setThumbnail(`https://b.ppy.sh/thumb/${beatmap.beatmapSetId}l.jpg`);
 }

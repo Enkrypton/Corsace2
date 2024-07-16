@@ -2,7 +2,7 @@ import { ChatInputCommandInteraction, Message, SlashCommandBuilder } from "disco
 import { osuClient } from "../../../Server/osu";
 import { Command } from "../index";
 import { Beatmap, Mode, User as APIUser, UserScore } from "nodesu";
-import { OAuth, User } from "../../../Models/user";
+import { OsuOAuth, User } from "../../../Models/user";
 import { applyMods, acronymtoMods, modsToAcronym } from "../../../Interfaces/mods";
 import beatmapEmbed from "../../functions/beatmapEmbed";
 import { loginResponse } from "../../functions/loginResponse";
@@ -84,9 +84,9 @@ async function run (m: Message | ChatInputCommandInteraction) {
         });
 
         if (!userQ) {
-            userQ = new User;
+            userQ = new User();
             userQ.country = apiUser.country.toString();
-            userQ.osu = new OAuth;
+            userQ.osu = new OsuOAuth();
             userQ.osu.userID = `${apiUser.userId}`;
             userQ.osu.username = apiUser.username;
             userQ.osu.avatar = "https://a.ppy.sh/" + apiUser.userId;
@@ -131,7 +131,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
             await respond(m, `Error parsing the mods ${mods}`);
             return;
         }
-        scores = scores.filter(score => (!score.enabledMods && modVal === 0) || (strict && score.enabledMods && modVal === score.enabledMods) || (!strict && score.enabledMods && (modVal & score.enabledMods) === modVal));
+        scores = scores.filter(score => (!score.enabledMods && modVal === 0) ?? (strict && score.enabledMods && modVal === score.enabledMods) ?? (!strict && score.enabledMods && (modVal & score.enabledMods) === modVal));
         await respond(m, `No scores with the mod combination **${mods}** exist Lol`);
         return;
     }
@@ -149,7 +149,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     let beatmap = ((await osuClient.beatmaps.getByBeatmapId(score.beatmapId, Mode.all, 1, undefined, score.enabledMods)) as Beatmap[])[0];
     beatmap = applyMods(beatmap, mods);
 
-    const message = await beatmapEmbed(beatmap, mods, user, undefined, score);
+    const embed = await beatmapEmbed(beatmap, mods, user, undefined, score);
 
     if (!(
         (m instanceof Message && /^(rb|recentb|recentbest)/i.test(m.content.substring(1))) ||
@@ -163,11 +163,11 @@ async function run (m: Message | ChatInputCommandInteraction) {
             else
                 break;
         }
-        message.setFooter({ text: `Try #${attempt} | <t:${score.date.getTime() / 1000}:R>` });
+        embed.setFooter({ text: `Try #${attempt} | <t:${score.date.getTime() / 1000}:R>` });
     } else
-        message.setFooter({ text: `<t:${score.date.getTime() / 1000}:R>` });
+        embed.setFooter({ text: `<t:${score.date.getTime() / 1000}:R>` });
 
-    await respond(m, warning, [message]);
+    await respond(m, warning, embed);
 }
 
 const data = new SlashCommandBuilder()

@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, GuildMember, Message, SlashCommandBuilder } from "discord.js";
 import { Command } from "../../../index";
 import modeColour from "../../../../functions/modeColour";
 import respond from "../../../../functions/respond";
@@ -9,6 +9,7 @@ import mappoolComponents from "../../../../functions/tournamentFunctions/mappool
 import { unFinishedTournaments } from "../../../../../Models/tournaments/tournament";
 import channelID from "../../../../functions/channelID";
 import { TournamentRoleType, TournamentChannelType } from "../../../../../Interfaces/tournament";
+import { EmbedBuilder } from "../../../../functions/embedBuilder";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
@@ -21,7 +22,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     if (all && m instanceof Message)
         m.content = m.content.replace("-a", "");
 
-    const params = extractParameters<parameters>(m, [
+    const params = await extractParameters<parameters>(m, [
         { name: "pool", paramType: "string" },
         { name: "slot", paramType: "string", postProcess: postProcessSlotOrder, optional: true },
     ]);
@@ -30,7 +31,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
     const { pool, slot, order } = params;
 
-    const components = await mappoolComponents(m, pool, slot || true, order || true, false, { text: channelID(m), searchType: "channel" }, unFinishedTournaments, false, undefined, true);
+    const components = await mappoolComponents(m, pool, slot ?? true, order ?? true, false, { text: channelID(m), searchType: "channel" }, unFinishedTournaments, false, undefined, true);
     if (!components || !("mappool" in components))
         return;
 
@@ -54,23 +55,22 @@ async function run (m: Message | ChatInputCommandInteraction) {
         return;
     }
 
-    const jobBoardEmbed = new EmbedBuilder()
+    const embed = new EmbedBuilder()
         .setTitle(`${mappool.name} Job Board`)
         .setColor(modeColour(tournament.mode.ID - 1))
         .setFooter({
             text: `Requested by ${m.member?.user.username}`,
-            iconURL: (m.member as GuildMember | null)?.displayAvatarURL() || undefined,
+            icon_url: (m.member as GuildMember | null)?.displayAvatarURL() ?? undefined,
         })
-        .setTimestamp();
+        .setTimestamp()
+        .addFields(mappool.slots.map(slot => {
+            return {
+                name: `**${slot.name}**`,
+                value: slot.maps.map(map => `**${slot.acronym}${slot.maps.length === 1 ? "" : map.order}:** ${map.jobPost && (all ? true : !map.jobPost.jobBoardThread) ? map.jobPost.description : map.jobPost?.jobBoardThread ? "**PUBLISHED**" : "N/A"}`).join("\n\n"),
+            };
+        }));
 
-    jobBoardEmbed.setFields(mappool.slots.map(slot => {
-        return {
-            name: `**${slot.name}**`,
-            value: slot.maps.map(map => `**${slot.acronym}${slot.maps.length === 1 ? "" : map.order}:** ${map.jobPost && (all ? true : !map.jobPost.jobBoardThread) ? map.jobPost.description : map.jobPost?.jobBoardThread ? "**PUBLISHED**" : "N/A"}`).join("\n\n"),
-        };
-    }));
-
-    await respond(m, undefined, [jobBoardEmbed]);
+    await respond(m, undefined, embed);
 }
 
 const data = new SlashCommandBuilder()

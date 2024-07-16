@@ -1,8 +1,10 @@
-import Router from "@koa/router";
+import axios from "axios";
+import { CorsaceRouter } from "../../corsaceRouter";
 import { Multi } from "nodesu";
 import { Brackets, EntityManager } from "typeorm";
 import { StageType } from "../../../Interfaces/stage";
 import { TournamentRoleType } from "../../../Interfaces/tournament";
+import { MapStatus, Matchup as MatchupInterface } from "../../../Interfaces/matchup";
 import { Matchup } from "../../../Models/tournaments/matchup";
 import { MatchupMap } from "../../../Models/tournaments/matchupMap";
 import { MatchupScore } from "../../../Models/tournaments/matchupScore";
@@ -14,11 +16,14 @@ import { validateTournament, hasRoles, validateStageOrRound } from "../../middle
 import { osuClient } from "../../osu";
 import { parseDateOrTimestamp } from "../../utils/dateParse";
 import assignTeamsToNextMatchup from "../../functions/tournaments/matchups/assignTeamsToNextMatchup";
-import { Tournament } from "../../../Models/tournaments/tournament";
-import { Stage } from "../../../Models/tournaments/stage";
 import { Round } from "../../../Models/tournaments/round";
+import { Stage } from "../../../Models/tournaments/stage";
+import { config } from "node-config-ts";
+import { MatchupSet } from "../../../Models/tournaments/matchupSet";
+import dbMatchupToInterface from "../../functions/tournaments/matchups/dbMatchupToInterface";
+import { ResponseBody, TournamentStageState, TournamentState } from "koa";
 
-const matchupRouter = new Router();
+const matchupRouter  = new CorsaceRouter();
 
 interface postMatchup {
     ID: number;
@@ -40,23 +45,27 @@ function sanitizeMatchupResponse (matchup: Matchup) {
         team1Score: matchup.team1Score,
         team2Score: matchup.team2Score,
         winner: matchup.winner,
-        maps: matchup.maps?.map(map => ({
-            ID: map.ID,
-            map: map.map,
-            order: map.order,
-            team1Score: map.team1Score,
-            team2Score: map.team2Score,
-            winner: map.winner,
-            scores: map.scores.map(score => ({
-                ID: score.ID,
-                user: score.user,
-                score: score.score,
-                mods: score.mods,
-                misses: score.misses,
-                combo: score.combo,
-                fail: score.fail,
-                accuracy: score.accuracy,
-                fullCombo: score.fullCombo,
+        sets: matchup.sets?.map(set => ({
+            ID: set.ID,
+            order: set.order, 
+            maps: set.maps?.map(map => ({
+                ID: map.ID,
+                map: map.map,
+                order: map.order,
+                team1Score: map.team1Score,
+                team2Score: map.team2Score,
+                winner: map.winner,
+                scores: map.scores.map(score => ({
+                    ID: score.ID,
+                    user: score.user,
+                    score: score.score,
+                    mods: score.mods,
+                    misses: score.misses,
+                    combo: score.combo,
+                    fail: score.fail,
+                    accuracy: score.accuracy,
+                    fullCombo: score.fullCombo,
+                })),
             })),
         })),
     };
@@ -83,7 +92,8 @@ async function updateMatchup (matchupID: number) {
     const matchup = await Matchup
         .createQueryBuilder("matchup")
         .leftJoinAndSelect("matchup.stage", "stage")
-        .leftJoinAndSelect("matchup.maps", "map")
+        .leftJoinAndSelect("matchup.sets", "set")
+        .leftJoinAndSelect("set.maps", "map")
         .leftJoinAndSelect("map.scores", "score")
         .leftJoinAndSelect("score.user", "user")
         .leftJoinAndSelect("matchup.team1", "team1")
@@ -95,21 +105,35 @@ async function updateMatchup (matchupID: number) {
         .getOne();
 
     if (matchup) {
-        matchup.maps!.forEach(async map => {
-            map.team1Score = map.scores
-                .filter(score => matchup.team1!.members.some(member => member.ID === score.user!.ID))
-                .reduce((acc, score) => acc + score.score, 0);
-            map.team2Score = map.scores
-                .filter(score => matchup.team2!.members.some(member => member.ID === score.user!.ID))
-                .reduce((acc, score) => acc + score.score, 0);
-            if (map.team1Score > map.team2Score)
-                map.winner = matchup.team1;
-            else if (map.team2Score > map.team1Score)
-                map.winner = matchup.team2;
-            await map.save();
+        matchup.sets!.forEach(async set => {
+            set.maps!.forEach(async map => {
+                map.team1Score = map.scores
+                    .filter(score => matchup.team1!.members.some(member => member.ID === score.user.ID))
+                    .reduce((acc, score) => acc + score.score, 0);
+                map.team2Score = map.scores
+                    .filter(score => matchup.team2!.members.some(member => member.ID === score.user.ID))
+                    .reduce((acc, score) => acc + score.score, 0);
+
+                if (map.team1Score > map.team2Score)
+                    map.winner = matchup.team1;
+                else if (map.team2Score > map.team1Score)
+                    map.winner = matchup.team2;
+
+                await map.save();
+            });
+
+            set.team1Score = set.maps!.filter(map => map.team1Score && map.team2Score ? map.team1Score > map.team2Score : false).length;
+            set.team2Score = set.maps!.filter(map => map.team1Score && map.team2Score ? map.team2Score > map.team1Score : false).length;
+
+            if (set.team1Score > set.team2Score)
+                set.winner = matchup.team1;
+            else if (set.team2Score > set.team1Score)
+                set.winner = matchup.team2;
+
+            await set.save();
         });
-        matchup.team1Score = matchup.maps!.filter(map => map.team1Score && map.team2Score ? map.team1Score > map.team2Score : false).length;
-        matchup.team2Score = matchup.maps!.filter(map => map.team1Score && map.team2Score ? map.team2Score > map.team1Score : false).length;
+        matchup.team1Score = matchup.sets!.filter(map => map.team1Score && map.team2Score ? map.team1Score > map.team2Score : false).length;
+        matchup.team2Score = matchup.sets!.filter(map => map.team1Score && map.team2Score ? map.team2Score > map.team1Score : false).length;
         if (matchup.team1Score > matchup.team2Score)
             matchup.winner = matchup.team1;
         else if (matchup.team2Score > matchup.team1Score)
@@ -118,52 +142,57 @@ async function updateMatchup (matchupID: number) {
     }
 }
 
-function validatePOSTMatchups (matchups: any[]): string | true {
+function validatePOSTMatchups (matchups: Partial<postMatchup>[]): asserts matchups is postMatchup[] {
     for (const matchup of matchups) {
-        if (matchup.ID === undefined || isNaN(parseInt(matchup.ID)) || parseInt(matchup.ID) < 1)
-            return `Invalid matchup ID provided: ${matchup.ID}`;
+        if (typeof matchup.ID !== "number" || isNaN(matchup.ID) || matchup.ID < 1)
+            throw new Error(`Invalid matchup ID provided: ${matchup.ID}`);
 
         if (matchup.date && (isNaN(parseDateOrTimestamp(matchup.date).getTime()) || parseDateOrTimestamp(matchup.date).getTime() < 0))
-            return `Invalid matchup date provided: ${matchup.date}`;
+            throw new Error(`Invalid matchup date provided: ${matchup.date}`);
 
         if (matchup.isLowerBracket !== undefined && typeof matchup.isLowerBracket !== "boolean")
-            return `Invalid matchup isLowerBracket provided: ${matchup.isLowerBracket}`;
+            throw new Error(`Invalid matchup isLowerBracket provided: ${matchup.isLowerBracket}`);
 
         if (matchup.potentials !== undefined && typeof matchup.potentials !== "boolean")
-            return `Invalid matchup potentials provided: ${matchup.potentials}`;
+            throw new Error(`Invalid matchup potentials provided: ${matchup.potentials}`);
 
-        if (matchup.team1 !== undefined && (isNaN(parseInt(matchup.team1)) || parseInt(matchup.team1) < 1))
-            return `Invalid matchup team1 provided: ${matchup.team1}`;
+        if (typeof matchup.team1 !== "number" || isNaN(matchup.team1) || matchup.team1 < 1)
+            throw new Error(`Invalid matchup team1 provided: ${matchup.team1}`);
 
-        if (matchup.team2 !== undefined && (isNaN(parseInt(matchup.team2)) || parseInt(matchup.team2) < 1))
-            return `Invalid matchup team2 provided: ${matchup.team2}`;
+        if (typeof matchup.team2 !== "number" || isNaN(matchup.team2) || matchup.team2 < 1)
+            throw new Error(`Invalid matchup team2 provided: ${matchup.team2}`);
 
         if (matchup.previousMatchups) {
             if (!Array.isArray(matchup.previousMatchups) || matchup.previousMatchups.length > 3)
-                return `Invalid matchup previousMatchups provided (not an array or more than 2 matchups): ${matchup.ID}`;
+                throw new Error(`Invalid matchup previousMatchups provided (not an array or more than 2 matchups): ${matchup.ID}`);
 
             if (!matchup.isLowerBracket && !matchup.previousMatchups.some(m => !m.isLowerBracket))
-                return `Invalid matchup previousMatchups provided (no previous matchup is winner bracket for a winner bracket matchup): ${matchup.ID}`;
+                throw new Error(`Invalid matchup previousMatchups provided (no previous matchup is winner bracket for a winner bracket matchup): ${matchup.ID}`);
 
             if (matchup.previousMatchups.some(m => m.ID === matchup.ID))
-                return `Invalid matchup previousMatchups provided (matchup is a previous matchup of itself): ${matchup.ID}`;
+                throw new Error(`Invalid matchup previousMatchups provided (matchup is a previous matchup of itself): ${matchup.ID}`);
 
-            const valid = validatePOSTMatchups(matchup.previousMatchups);
-            if (valid !== true)
-                return valid;
+            validatePOSTMatchups(matchup.previousMatchups);
         }
     }
-    return true;
 }
 
-matchupRouter.get("/:matchupID", async (ctx) => {
-    const matchup = await Matchup
+matchupRouter.$get("/:matchupID", async (ctx) => {
+    const dbMatchup = await Matchup
         .createQueryBuilder("matchup")
+        .leftJoinAndSelect("matchup.round", "round")
+        .innerJoinAndSelect("matchup.stage", "stage")
+        .innerJoinAndSelect("stage.tournament", "tournament")
         .leftJoinAndSelect("matchup.team1", "team1")
         .leftJoinAndSelect("matchup.team2", "team2")
-        .leftJoinAndSelect("matchup.first", "first")
+        .leftJoinAndSelect("team1.captain", "captain1")
+        .leftJoinAndSelect("team2.captain", "captain2")
+        .leftJoinAndSelect("team1.members", "members1")
+        .leftJoinAndSelect("team2.members", "members2")
         .leftJoinAndSelect("matchup.winner", "winner")
-        .leftJoinAndSelect("matchup.maps", "maps")
+        .leftJoinAndSelect("matchup.sets", "set")
+        .leftJoinAndSelect("set.first", "first")
+        .leftJoinAndSelect("set.maps", "maps")
         .leftJoinAndSelect("maps.map", "map")
         .leftJoinAndSelect("map.beatmap", "beatmap")
         .leftJoinAndSelect("beatmap.beatmapset", "beatmapset")
@@ -174,7 +203,7 @@ matchupRouter.get("/:matchupID", async (ctx) => {
         .where("matchup.ID = :ID", { ID: ctx.params.matchupID })
         .getOne();
 
-    if (!matchup) {
+    if (!dbMatchup) {
         ctx.body = {
             success: false,
             error: "Matchup not found.",
@@ -182,19 +211,100 @@ matchupRouter.get("/:matchupID", async (ctx) => {
         return;
     }
 
-    ctx.body = {
+    const roundOrStage: Round | Stage | null = 
+        dbMatchup.round ? 
+            await Round
+                .createQueryBuilder("round")
+                .innerJoin("round.matchups", "matchup")
+                .leftJoinAndSelect("round.mappool", "mappool")
+                .leftJoinAndSelect("mappool.slots", "slots")
+                .leftJoinAndSelect("slots.maps", "maps")
+                .leftJoinAndSelect("maps.beatmap", "map")
+                .leftJoinAndSelect("map.beatmapset", "beatmapset")
+                .leftJoinAndSelect("beatmapset.creator", "creator")
+                .leftJoinAndSelect("maps.customBeatmap", "customBeatmap")
+                .leftJoinAndSelect("maps.customMappers", "customMappers")
+                .leftJoinAndSelect("round.mapOrder", "mapOrder")
+                .where("matchup.ID = :ID", { ID: dbMatchup.ID })
+                .getOne() :
+            dbMatchup.stage ?
+                await Stage
+                    .createQueryBuilder("stage")
+                    .innerJoin("stage.matchups", "matchup")
+                    .leftJoinAndSelect("stage.mappool", "mappool")
+                    .leftJoinAndSelect("mappool.slots", "slots")
+                    .leftJoinAndSelect("slots.maps", "maps")
+                    .leftJoinAndSelect("maps.beatmap", "map")
+                    .leftJoinAndSelect("map.beatmapset", "beatmapset")
+                    .leftJoinAndSelect("beatmapset.creator", "creator")
+                    .leftJoinAndSelect("maps.customBeatmap", "customBeatmap")
+                    .leftJoinAndSelect("maps.customMappers", "customMappers")
+                    .leftJoinAndSelect("stage.mapOrder", "mapOrder")
+                    .where("matchup.ID = :ID", { ID: dbMatchup.ID })
+                    .getOne() : 
+                null;
+
+    const body: {
+        success: true;
+        matchup: MatchupInterface;
+    } = {
         success: true,
-        matchup,
+        matchup: await dbMatchupToInterface(dbMatchup, roundOrStage),
     };
+    
+    ctx.body = body;
 });
 
-matchupRouter.get("/:matchupID/teams", async (ctx) => {
+matchupRouter.$get("/:matchupID/bancho/:endpoint", async (ctx) => {
+    const endpoint = ctx.params.endpoint;
+
+    const matchup = await Matchup
+        .createQueryBuilder("matchup")
+        .where("matchup.id = :matchupID", { matchupID: ctx.params.matchupID })
+        .getOne();
+
+    if (!matchup) {
+        ctx.body = {
+            success: false,
+            error: "Matchup not found",
+        };
+        return;
+    }
+
+    try {
+        const { data } = await axios.get<ResponseBody<unknown>>(`${matchup.baseURL ?? config.banchoBot.publicUrl}/api/bancho/stream/${matchup.ID}/${endpoint}`, {
+            auth: config.interOpAuth,
+        });
+
+        ctx.body = data;
+    } catch (e) {
+        if (axios.isAxiosError(e)) {
+            ctx.body = e.response?.data ?? {
+                success: false,
+                error: e.message,
+            };
+            ctx.status = e.response?.status ?? 500;
+        } else if (e instanceof Error) {
+            ctx.body = {
+                success: false,
+                error: e.message,
+            };
+        } else {
+            ctx.body = {
+                success: false,
+                error: `Unknown error: ${e}`,
+            };
+        }
+    }
+});
+
+matchupRouter.$get<{ matchup: Matchup }>("/:matchupID/teams", async (ctx) => {
     const matchup = await Matchup
         .createQueryBuilder("matchup")
         .leftJoinAndSelect("matchup.team1", "team1")
         .leftJoinAndSelect("matchup.team2", "team2")
-        .leftJoinAndSelect("team1.manager", "manager1")
-        .leftJoinAndSelect("team2.manager", "manager2")
+        .leftJoinAndSelect("team1.captain", "captain1")
+        .leftJoinAndSelect("team2.captain", "captain2")
         .leftJoinAndSelect("team1.members", "members1")
         .leftJoinAndSelect("team2.members", "members2")
         .where("matchup.ID = :ID", { ID: ctx.params.matchupID })
@@ -214,22 +324,17 @@ matchupRouter.get("/:matchupID/teams", async (ctx) => {
     };
 });
 
-matchupRouter.post("/create", validateTournament, validateStageOrRound, isLoggedInDiscord, hasRoles([TournamentRoleType.Organizer]), async (ctx) => {
-    const matchups = ctx.request.body?.matchups;
+matchupRouter.$post<{ matchups: Matchup[] }, TournamentStageState>("/create", validateTournament, validateStageOrRound, isLoggedInDiscord, hasRoles([TournamentRoleType.Organizer]), async (ctx) => {
+    const matchups: Partial<postMatchup>[] | postMatchup[] = ctx.request.body?.matchups;
     if (!matchups) {
         ctx.body = {
+            success: false,
             error: "No matchups provided",
         };
         return;
     }
 
-    const valid = validatePOSTMatchups(matchups);
-    if (valid !== true) {
-        ctx.body = {
-            error: valid,
-        };
-        return;
-    }
+    validatePOSTMatchups(matchups);
 
     const idToMatchup = new Map<number, Matchup>();
 
@@ -238,7 +343,7 @@ matchupRouter.post("/create", validateTournament, validateStageOrRound, isLogged
         for (const matchup of matchups) {
 
             let dbMatchup = new Matchup();
-            dbMatchup.isLowerBracket = matchup.isLowerBracket || false;
+            dbMatchup.isLowerBracket = matchup.isLowerBracket ?? false;
             if (idToMatchup.has(matchup.ID)) {
                 dbMatchup = idToMatchup.get(matchup.ID)!;
                 if (dbMatchup.isLowerBracket !== matchup.isLowerBracket)
@@ -287,7 +392,7 @@ matchupRouter.post("/create", validateTournament, validateStageOrRound, isLogged
                 dbMatchup.potentials = [];
                 const teams = previousMatchups?.map(m => {
                     if (m.winner)
-                        return [m.winner];
+                        return [ m.winner ];
 
                     const teamArray: Team[] = [];
                     if (m.team1)
@@ -296,7 +401,7 @@ matchupRouter.post("/create", validateTournament, validateStageOrRound, isLogged
                         teamArray.push(m.team2);
 
                     return teamArray;
-                }) || [];
+                }) ?? [];
                 if (teams.flat().length < 2)
                     for (let i = 0; i < 4; i++) {
                         const potential = new Matchup();
@@ -344,7 +449,7 @@ matchupRouter.post("/create", validateTournament, validateStageOrRound, isLogged
             while (queue.length > 0) {
                 const node = queue.shift()!;
                 stack.push(node);
-                stack.push(...node.potentials || []);
+                stack.push(...node.potentials ?? []);
 
                 if (node.previousMatchups)
                     queue.push(...node.previousMatchups);
@@ -361,33 +466,30 @@ matchupRouter.post("/create", validateTournament, validateStageOrRound, isLogged
             };
         });
     } catch (err) {
+        console.error(err);
         ctx.body = {
             success: false,
-            error: err instanceof Error ? err.message : err,
+            error: err instanceof Error ? err.message : typeof err === "string" ? err : "Internal server error",
         };
     }
 });
 
-matchupRouter.post("/assignTeam", validateTournament, validateStageOrRound, isLoggedInDiscord, hasRoles([TournamentRoleType.Organizer]), async (ctx) => {
-    const tournament: Tournament | null = ctx.state.tournament || null;
-    if (!tournament) {
+matchupRouter.$post<{ matchup: Matchup }, TournamentState>("/assignTeam", validateTournament, validateStageOrRound, isLoggedInDiscord, hasRoles([TournamentRoleType.Organizer]), async (ctx) => {
+    const tournament = ctx.state.tournament;
+    const stageOrRound = ctx.state.stage ?? ctx.state.round ?? null;
+    if (!stageOrRound) {
         ctx.body = {
-            error: "Tournament not found",
+            success: false,
+            error: "No stage or round provided",
         };
         return;
     }
 
-    const stageOrRound: Stage | Round | null = ctx.state.stage || ctx.state.round || null;
-    if (!stageOrRound) {
-        ctx.body = {
-            error: "Stage or round not found",
-        };
-        return;
-    }
 
     const matchupID = ctx.request.body?.matchupID;
     if (!matchupID || isNaN(parseInt(matchupID))) {
         ctx.body = {
+            success: false,
             error: "No matchup ID provided",
         };
         return;
@@ -396,18 +498,20 @@ matchupRouter.post("/assignTeam", validateTournament, validateStageOrRound, isLo
     const teamID = ctx.request.body?.teamID;
     if (!teamID || isNaN(parseInt(teamID))) {
         ctx.body = {
+            success: false,
             error: "No team ID provided",
         };
         return;
     }
     const team = await Team
         .createQueryBuilder("team")
-        .leftJoinAndSelect("team.manager", "manager")
+        .leftJoinAndSelect("team.captain", "captain")
         .leftJoinAndSelect("team.members", "member")
         .where("team.ID = :teamID", { teamID })
         .getOne();
     if (!team) {
         ctx.body = {
+            success: false,
             error: "Team not found",
         };
         return;
@@ -416,6 +520,7 @@ matchupRouter.post("/assignTeam", validateTournament, validateStageOrRound, isLo
     const team1Or2 = ctx.request.body?.team1Or2;
     if (team1Or2 !== 1 && team1Or2 !== 2) {
         ctx.body = {
+            success: false,
             error: "No team1 or team2 provided",
         };
         return;
@@ -441,6 +546,7 @@ matchupRouter.post("/assignTeam", validateTournament, validateStageOrRound, isLo
 
     if (!matchup) {
         ctx.body = {
+            success: false,
             error: "Matchup not found",
         };
         return;
@@ -448,6 +554,7 @@ matchupRouter.post("/assignTeam", validateTournament, validateStageOrRound, isLo
 
     if (matchup.team1?.ID === parseInt(teamID) || matchup.team2?.ID === parseInt(teamID)) {
         ctx.body = {
+            success: false,
             error: "Team is already assigned to matchup",
         };
         return;
@@ -456,6 +563,7 @@ matchupRouter.post("/assignTeam", validateTournament, validateStageOrRound, isLo
     if (team1Or2 === 1) {
         if (matchup.team1) {
             ctx.body = {
+                success: false,
                 error: "Team1 is already assigned to matchup",
             };
             return;
@@ -464,6 +572,7 @@ matchupRouter.post("/assignTeam", validateTournament, validateStageOrRound, isLo
     } else {
         if (matchup.team2) {
             ctx.body = {
+                success: false,
                 error: "Team2 is already assigned to matchup",
             };
             return;
@@ -489,19 +598,13 @@ matchupRouter.post("/assignTeam", validateTournament, validateStageOrRound, isLo
     };
 });
 
-matchupRouter.post("/date", validateTournament, validateStageOrRound, isLoggedInDiscord, hasRoles([TournamentRoleType.Organizer]), async (ctx) => {
-    const tournament: Tournament | null = ctx.state.tournament || null;
-    if (!tournament) {
-        ctx.body = {
-            error: "Tournament not found",
-        };
-        return;
-    }
-
-    const stageOrRound: Stage | Round | null = ctx.state.stage || ctx.state.round || null;
+matchupRouter.$post<{ matchup: Matchup }, TournamentState>("/date", validateTournament, validateStageOrRound, isLoggedInDiscord, hasRoles([TournamentRoleType.Organizer]), async (ctx) => {
+    const tournament = ctx.state.tournament;
+    const stageOrRound = ctx.state.stage ?? ctx.state.round ?? null;
     if (!stageOrRound) {
         ctx.body = {
-            error: "Stage or round not found",
+            success: false,
+            error: "No stage or round provided",
         };
         return;
     }
@@ -509,6 +612,7 @@ matchupRouter.post("/date", validateTournament, validateStageOrRound, isLoggedIn
     const matchupID = ctx.request.body?.matchupID;
     if (!matchupID || isNaN(parseInt(matchupID))) {
         ctx.body = {
+            success: false,
             error: "No matchup ID provided",
         };
         return;
@@ -517,6 +621,7 @@ matchupRouter.post("/date", validateTournament, validateStageOrRound, isLoggedIn
     const date = ctx.request.body?.date;
     if (!date || (isNaN(parseDateOrTimestamp(date).getTime()) || parseDateOrTimestamp(date).getTime() < 0)) {
         ctx.body = {
+            success: false,
             error: "No date provided",
         };
         return;
@@ -537,6 +642,7 @@ matchupRouter.post("/date", validateTournament, validateStageOrRound, isLoggedIn
 
     if (!matchup) {
         ctx.body = {
+            success: false,
             error: "Matchup not found",
         };
         return;
@@ -551,9 +657,10 @@ matchupRouter.post("/date", validateTournament, validateStageOrRound, isLoggedIn
     };
 });
 
-matchupRouter.post("/mp", isLoggedInDiscord, isCorsace, async (ctx) => {
+matchupRouter.$post<{ matchup: object }>("/mp", isLoggedInDiscord, isCorsace, async (ctx) => {
     if (!ctx.request.body) {
         ctx.body = {
+            success: false,
             error: "No request body",
         };
         return;
@@ -562,6 +669,7 @@ matchupRouter.post("/mp", isLoggedInDiscord, isCorsace, async (ctx) => {
     const obj = requiredNumberFields(ctx.request.body, ["mpID", "matchID"]);
     if (typeof obj === "string") {
         ctx.body = {
+            success: false,
             error: obj,
         };
         return;
@@ -571,40 +679,53 @@ matchupRouter.post("/mp", isLoggedInDiscord, isCorsace, async (ctx) => {
 
     const matchup = await Matchup
         .createQueryBuilder("matchup")
+        .leftJoinAndSelect("matchup.round", "round")
+        .leftJoinAndSelect("round.mappool", "roundMappool")
+        .leftJoinAndSelect("roundMappool.slots", "roundSlot")
+        .leftJoinAndSelect("roundSlot.maps", "roundMap")
+        .leftJoinAndSelect("roundMap.beatmap", "roundBeatmap")
+        .leftJoinAndSelect("round.mapOrder", "roundMapOrder")
         .innerJoinAndSelect("matchup.stage", "stage")
-        .innerJoinAndSelect("stage.mappool", "mappool")
-        .innerJoinAndSelect("mappool.slots", "slot")
-        .innerJoinAndSelect("slot.maps", "map")
-        .innerJoinAndSelect("map.beatmap", "beatmap")
+        .leftJoinAndSelect("stage.mappool", "stageMappool")
+        .leftJoinAndSelect("stageMappool.slots", "stageSlot")
+        .leftJoinAndSelect("stageSlot.maps", "stageMap")
+        .leftJoinAndSelect("stageMap.beatmap", "stageBeatmap")
+        .leftJoinAndSelect("stage.mapOrder", "stageMapOrder")
         .leftJoinAndSelect("matchup.teams", "team")
         .leftJoinAndSelect("matchup.team1", "team1")
         .leftJoinAndSelect("matchup.team2", "team2")
-        .leftJoinAndSelect("team.manager", "manager")
+        .leftJoinAndSelect("team.captain", "captain")
         .leftJoinAndSelect("team.members", "member")
-        .leftJoinAndSelect("team1.manager", "team1manager")
+        .leftJoinAndSelect("team1.captain", "team1captain")
         .leftJoinAndSelect("team1.members", "team1member")
-        .leftJoinAndSelect("team2.manager", "team2manager")
+        .leftJoinAndSelect("team2.captain", "team2captain")
         .leftJoinAndSelect("team2.members", "team2member")
-        .leftJoinAndSelect("matchup.maps", "matchupMap")
+        .leftJoinAndSelect("matchup.sets", "set")
+        .leftJoinAndSelect("set.maps", "matchupMap")
         .leftJoinAndSelect("matchupMap.scores", "score")
         .where("matchup.ID = :matchID", { matchID })
         .getOne();
     if (!matchup) {
         ctx.body = {
+            success: false,
             error: "Matchup not found",
         };
         return;
     }
 
     const mpData = await osuClient.multi.getMatch(mpID) as Multi;
-    const maps: MatchupMap[] = [];
+    const set = new MatchupSet();
+    set.matchup = matchup;
+    set.order = 1;
+    set.maps = [];
+    const sets: MatchupSet[] = [set];
     mpData.games.forEach((game, i) => {
         const beatmap = matchup.stage!.mappool![0].slots.find(slot => slot.maps.some(map => map.beatmap!.ID === game.beatmapId))!.maps.find(map => map.beatmap!.ID === game.beatmapId);
         if (!beatmap)
             return;
 
-        const map = new MatchupMap;
-        map.matchup = matchup;
+        const map = new MatchupMap();
+        map.set = sets[sets.length - 1];
         map.map = beatmap;
         map.order = i + 1;
         map.scores = [];
@@ -613,50 +734,81 @@ matchupRouter.post("/mp", isLoggedInDiscord, isCorsace, async (ctx) => {
             if (matchup.stage!.stageType === StageType.Qualifiers)
                 user = matchup.teams!.flatMap(team => team.members).find(member => member.osu.userID === score.userId.toString());
             else
-                user = matchup.team1!.members.find(member => member.osu.userID === score.userId.toString()) || matchup.team2!.members.find(member => member.osu.userID === score.userId.toString());
+                user = matchup.team1!.members.find(member => member.osu.userID === score.userId.toString()) ?? matchup.team2!.members.find(member => member.osu.userID === score.userId.toString());
             if (!user)
                 return;
 
-            const matchupScore      = new MatchupScore;
+            const matchupScore      = new MatchupScore();
             matchupScore.user       = user;
             matchupScore.score      = score.score;
-            matchupScore.mods       = ((score.enabledMods || game.mods) | 1) ^ 1; // Remove NF from mods (the OR 1 is to ensure NM is 0 after XOR)
+            matchupScore.mods       = ((score.enabledMods ?? game.mods) | 1) ^ 1; // Remove NF from mods (the OR 1 is to ensure NM is 0 after XOR)
             matchupScore.misses     = score.countMiss;
             matchupScore.combo      = score.maxCombo;
             matchupScore.fail       = !score.pass;
             matchupScore.accuracy   = (score.count50 + 2 * score.count100 + 6 * score.count300) / Math.max(6 * (score.countMiss + score.count50 + score.count100 + score.count300), 1);
-            matchupScore.fullCombo  = score.perfect || score.maxCombo === beatmap.beatmap!.maxCombo;
+            matchupScore.fullCombo  = score.perfect ?? score.maxCombo === beatmap.beatmap!.maxCombo;
 
             map.scores.push(matchupScore);
         });
         if (matchup.stage!.stageType !== StageType.Qualifiers) {
             map.team1Score = map.scores
-                .filter(score => matchup.team1!.members.some(member => member.osu.userID === score.user!.osu.userID))
+                .filter(score => matchup.team1!.members.some(member => member.osu.userID === score.user.osu.userID))
                 .reduce((acc, score) => acc + score.score, 0);
             map.team2Score = map.scores
-                .filter(score => matchup.team2!.members.some(member => member.osu.userID === score.user!.osu.userID))
+                .filter(score => matchup.team2!.members.some(member => member.osu.userID === score.user.osu.userID))
                 .reduce((acc, score) => acc + score.score, 0);
+            map.winner = map.team1Score > map.team2Score ? matchup.team1 : map.team2Score > map.team1Score ? matchup.team2 : undefined;
         }
-        maps.push(map);
+        sets[sets.length - 1].maps!.push(map);
+
+        if (matchup.stage!.stageType !== StageType.Qualifiers && (matchup.round?.mapOrder ?? matchup.stage!.mapOrder)) {
+            if (map.winner === matchup.team1)
+                sets[sets.length - 1].team1Score = (sets[sets.length - 1].team1Score ?? 0) + 1;
+            else if (map.winner === matchup.team2)
+                sets[sets.length - 1].team2Score = (sets[sets.length - 1].team2Score ?? 0) + 1;
+
+            const setOrders = (matchup.round?.mapOrder ?? matchup.stage!.mapOrder)!.map(order => order.set).filter((set, i, arr) => arr.indexOf(set) === i).map(set => ({
+                set,
+                maps: (matchup.round?.mapOrder ?? matchup.stage!.mapOrder)!.filter(mapOrder => mapOrder.set === set),
+            }));
+            if (setOrders.find(setOrder => setOrder.set === sets.length)) {
+                const setOrder = setOrders.find(setOrder => setOrder.set === sets.length)!;
+                const firstTo = setOrder.maps.filter(map => map.status === MapStatus.Picked).length / 2 + 1;
+                if (sets[sets.length - 1].team1Score === firstTo)
+                    sets[sets.length - 1].winner = matchup.team1;
+                else if (sets[sets.length - 1].team2Score === firstTo)
+                    sets[sets.length - 1].winner = matchup.team2;
+
+                if (sets[sets.length - 1].winner) {
+                    const nextSet = new MatchupSet();
+                    nextSet.matchup = matchup;
+                    nextSet.order = sets.length + 1;
+                    nextSet.maps = [];
+                    sets.push(nextSet);
+                }
+            }
+        }
     });
 
-    matchup.maps?.forEach(async map => {
-        await Promise.all(map.scores.map(score => score.remove()));
-        await map.remove();
+    matchup.sets?.forEach(async set => {
+        await Promise.all(set.maps?.map(map => map.scores.map(score => score.remove())) ?? []);
+        await Promise.all(set.maps?.map(map => map.remove()) ?? []);
+        await set.remove();
     });
 
-    maps.forEach(async map => {
-        await map.save();
-        await Promise.all(map.scores?.map(score => {
+    sets.forEach(async set => {
+        await set.save();
+        await Promise.all(set.maps?.map(map => map.save()) ?? []);
+        await Promise.all(set.maps?.flatMap(map => map.scores?.map(score => {
             score.map = map;
             return score.save();
-        }) || []);
+        }) ?? []) ?? []);
     });
 
-    matchup.maps = maps;
+    matchup.sets = sets;
     if (matchup.stage!.stageType !== StageType.Qualifiers) {
-        matchup.team1Score = maps.filter(map => map.team1Score && map.team2Score ? map.team1Score > map.team2Score : false).length;
-        matchup.team2Score = maps.filter(map => map.team1Score && map.team2Score ? map.team2Score > map.team1Score : false).length;
+        matchup.team1Score = sets.filter(map => map.team1Score && map.team2Score ? map.team1Score > map.team2Score : false).length;
+        matchup.team2Score = sets.filter(map => map.team1Score && map.team2Score ? map.team2Score > map.team1Score : false).length;
         if (matchup.team1Score > matchup.team2Score)
             matchup.winner = matchup.team1;
         else if (matchup.team2Score > matchup.team1Score)
@@ -673,23 +825,25 @@ matchupRouter.post("/mp", isLoggedInDiscord, isCorsace, async (ctx) => {
     };
 });
 
-matchupRouter.post("/score", isLoggedInDiscord, isCorsace, async (ctx) => {
+matchupRouter.$post<{ matchup: object }>("/score", isLoggedInDiscord, isCorsace, async (ctx) => {
     if (!ctx.request.body) {
         ctx.body = {
+            success: false,
             error: "No request body",
         };
         return;
     }
 
-    const obj = requiredNumberFields(ctx.request.body, ["matchID", "teamID", "mapOrder", "userID", "score", "mods", "misses", "combo", "accuracy"]);
+    const obj = requiredNumberFields(ctx.request.body, ["matchID", "teamID", "setNum", "mapOrder", "userID", "score", "mods", "misses", "combo", "accuracy"]);
     if (typeof obj === "string") {
         ctx.body = {
+            success: false,
             error: obj,
         };
         return;
     }
 
-    const { matchID, teamID, mapOrder, userID, score, mods, misses, combo, accuracy } = obj;
+    const { matchID, teamID, setNum, mapOrder, userID, score, mods, misses, combo, accuracy } = obj;
 
     const matchup = await Matchup
         .createQueryBuilder("matchup")
@@ -699,29 +853,41 @@ matchupRouter.post("/score", isLoggedInDiscord, isCorsace, async (ctx) => {
         .innerJoinAndSelect("slot.maps", "map")
         .innerJoinAndSelect("map.beatmap", "beatmap")
         .leftJoinAndSelect("matchup.teams", "team")
-        .leftJoinAndSelect("team.manager", "manager")
+        .leftJoinAndSelect("team.captain", "captain")
         .leftJoinAndSelect("team.members", "member")
         .leftJoinAndSelect("matchup.team1", "team1")
-        .leftJoinAndSelect("team1.manager", "team1manager")
+        .leftJoinAndSelect("team1.captain", "team1captain")
         .leftJoinAndSelect("team1.members", "team1member")
         .leftJoinAndSelect("matchup.team2", "team2")
-        .leftJoinAndSelect("team2.manager", "team2manager")
+        .leftJoinAndSelect("team2.captain", "team2captain")
         .leftJoinAndSelect("team2.members", "team2member")
-        .leftJoinAndSelect("matchup.maps", "matchupMap")
+        .leftJoinAndSelect("matchup.sets", "set")
+        .leftJoinAndSelect("set.maps", "matchupMap")
         .leftJoinAndSelect("matchupMap.scores", "score")
         .where("matchup.ID = :matchID", { matchID })
         .andWhere("stage.stageType = '0'")
         .getOne();
     if (!matchup) {
         ctx.body = {
+            success: false,
             error: "Matchup not found",
         };
         return;
     }
 
-    const map = matchup.maps!.find(map => map.order === mapOrder);
+    const set = matchup.sets!.find(set => set.order === setNum);
+    if (!set) {
+        ctx.body = {
+            success: false,
+            error: "Set not found",
+        };
+        return;
+    }
+
+    const map = set.maps!.find(map => map.order === mapOrder);
     if (!map) {
         ctx.body = {
+            success: false,
             error: "Map not found",
         };
         return;
@@ -734,6 +900,7 @@ matchupRouter.post("/score", isLoggedInDiscord, isCorsace, async (ctx) => {
         team = matchup.team1?.ID === teamID ? matchup.team1 : matchup.team2?.ID === teamID ? matchup.team2 : undefined;
     if (!team) {
         ctx.body = {
+            success: false,
             error: "Team not found",
         };
         return;
@@ -742,30 +909,31 @@ matchupRouter.post("/score", isLoggedInDiscord, isCorsace, async (ctx) => {
     const user = team.members.find(member => member.ID === userID);
     if (!user) {
         ctx.body = {
+            success: false,
             error: "User not found",
         };
         return;
     }
 
-    const matchupScore      = new MatchupScore;
+    const matchupScore      = new MatchupScore();
     matchupScore.user       = user;
     matchupScore.score      = score;
     matchupScore.mods       = mods;
     matchupScore.misses     = misses;
     matchupScore.combo      = combo;
-    matchupScore.fail       = ctx.request.body.fail || false;
+    matchupScore.fail       = ctx.request.body.fail ?? false;
     matchupScore.accuracy   = accuracy;
-    matchupScore.fullCombo  = ctx.request.body.fullCombo || false;
+    matchupScore.fullCombo  = ctx.request.body.fullCombo ?? false;
     matchupScore.map        = map;
     await matchupScore.save();
 
     if (matchup.stage!.stageType !== StageType.Qualifiers) {
         map.scores.push(matchupScore);
         map.team1Score = map.scores
-            .filter(score => matchup.team1!.members.some(member => member.ID === score.user!.ID))
+            .filter(score => matchup.team1!.members.some(member => member.ID === score.user.ID))
             .reduce((acc, score) => acc + score.score, 0);
         map.team2Score = map.scores
-            .filter(score => matchup.team2!.members.some(member => member.ID === score.user!.ID))
+            .filter(score => matchup.team2!.members.some(member => member.ID === score.user.ID))
             .reduce((acc, score) => acc + score.score, 0);
         if (map.team1Score > map.team2Score)
             map.winner = matchup.team1;
@@ -773,10 +941,13 @@ matchupRouter.post("/score", isLoggedInDiscord, isCorsace, async (ctx) => {
             map.winner = matchup.team2;
         await map.save();
 
-        const i = matchup.maps?.findIndex(m => m.ID === map.ID);
-        matchup.maps![i!] = map;    
-        matchup.team1Score = matchup.maps!.filter(map => map.team1Score && map.team2Score ? map.team1Score > map.team2Score : false).length;
-        matchup.team2Score = matchup.maps!.filter(map => map.team1Score && map.team2Score ? map.team2Score > map.team1Score : false).length;
+        const i = matchup.sets!.findIndex(m => m.ID === set.ID);
+        const j = matchup.sets![i].maps!.findIndex(m => m.ID === map.ID);
+        matchup.sets![i].maps![j] = map;
+        matchup.sets![i].team1Score = matchup.sets![i].maps!.filter(map => map.team1Score && map.team2Score ? map.team1Score > map.team2Score : false).length;
+        matchup.sets![i].team2Score = matchup.sets![i].maps!.filter(map => map.team1Score && map.team2Score ? map.team2Score > map.team1Score : false).length;
+        matchup.team1Score = matchup.sets!.filter(set => set.team1Score && set.team2Score ? set.team1Score > set.team2Score : false).length;
+        matchup.team2Score = matchup.sets!.filter(set => set.team1Score && set.team2Score ? set.team2Score > set.team1Score : false).length;
         if (matchup.team1Score > matchup.team2Score)
             matchup.winner = matchup.team1;
         else if (matchup.team2Score > matchup.team1Score)
@@ -790,10 +961,11 @@ matchupRouter.post("/score", isLoggedInDiscord, isCorsace, async (ctx) => {
     };
 }); 
 
-matchupRouter.delete("/score/:scoreID", isLoggedInDiscord, isCorsace, async (ctx) => {
+matchupRouter.$delete("/score/:scoreID", isLoggedInDiscord, isCorsace, async (ctx) => {
     const scoreID = parseInt(ctx.params.scoreID);
     if (isNaN(scoreID)) {
         ctx.body = {
+            success: false,
             error: "Invalid score ID",
         };
         return;
@@ -801,12 +973,14 @@ matchupRouter.delete("/score/:scoreID", isLoggedInDiscord, isCorsace, async (ctx
 
     const score = await MatchupScore
         .createQueryBuilder("score")
-        .leftJoinAndSelect("score.map", "map")
-        .leftJoinAndSelect("map.matchup", "matchup")
+        .innerJoinAndSelect("score.map", "map")
+        .innerJoinAndSelect("map.set", "set")
+        .innerJoinAndSelect("set.matchup", "matchup")
         .where("score.ID = :scoreID", { scoreID })
         .getOne();
     if (!score) {
         ctx.body = {
+            success: false,
             error: "Score not found",
         };
         return;
@@ -814,17 +988,18 @@ matchupRouter.delete("/score/:scoreID", isLoggedInDiscord, isCorsace, async (ctx
 
     await score.remove();
 
-    await updateMatchup(score.map!.matchup!.ID);
+    await updateMatchup(score.map.set.matchup!.ID);
     
     ctx.body = {
         success: true,
     };
 });
 
-matchupRouter.delete("/map/:mapID", isLoggedInDiscord, isCorsace, async (ctx) => {
+matchupRouter.$delete("/map/:mapID", isLoggedInDiscord, isCorsace, async (ctx) => {
     const mapID = parseInt(ctx.params.mapID);
     if (isNaN(mapID)) {
         ctx.body = {
+            success: false,
             error: "Invalid map ID",
         };
         return;
@@ -833,11 +1008,13 @@ matchupRouter.delete("/map/:mapID", isLoggedInDiscord, isCorsace, async (ctx) =>
     const map = await MatchupMap
         .createQueryBuilder("map")
         .leftJoinAndSelect("map.scores", "score")
-        .leftJoinAndSelect("map.matchup", "matchup")
+        .innerJoinAndSelect("map.set", "set")
+        .innerJoinAndSelect("set.matchup", "matchup")
         .where("map.ID = :mapID", { mapID })
         .getOne();
     if (!map) {
         ctx.body = {
+            success: false,
             error: "Map not found",
         };
         return;
@@ -846,7 +1023,7 @@ matchupRouter.delete("/map/:mapID", isLoggedInDiscord, isCorsace, async (ctx) =>
     await Promise.all(map.scores.map(score => score.remove()));
     await map.remove();
     
-    await updateMatchup(map.matchup!.ID);
+    await updateMatchup(map.set.matchup!.ID);
 
     ctx.body = {
         success: true,

@@ -29,7 +29,7 @@ export const sortOrderHash = {
 export function sortTextToOrder (sort: string | null | undefined): number {
     if (!sort)
         return -1;
-    return sortOrderHash[sort.trim().toLowerCase()] ?? -1;
+    return sortOrderHash[sort.trim().toLowerCase() as keyof typeof sortOrderHash] ?? -1;
 }
 
 export enum TournamentStatus {
@@ -52,7 +52,9 @@ export class Tournament extends BaseEntity {
     @CreateDateColumn()
         createdAt!: Date;
 
-    @ManyToOne(() => User, user => user.tournamentsOrganized)
+    @ManyToOne(() => User, user => user.tournamentsOrganized, {
+        nullable: false,
+    })
         organizer!: User;
 
     @ManyToOne(() => ModeDivision, mode => mode.tournaments, {
@@ -97,6 +99,9 @@ export class Tournament extends BaseEntity {
     @Column({ default: false })
         invitational!: boolean;
 
+    @Column({ default: true })
+        captainMustPlay!: boolean;
+
     @Column()
         minTeamSize!: number;
 
@@ -127,9 +132,6 @@ export class Tournament extends BaseEntity {
     @ManyToMany(() => Team, team => team.tournaments)
     @JoinTable()
         teams!: Team[];
-
-    @Column({ default: false })
-        publicQualifiers!: boolean;
 
     @Column({ type: "enum", enum: TournamentStatus, default: TournamentStatus.NotStarted })
         status!: TournamentStatus;

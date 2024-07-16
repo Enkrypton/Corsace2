@@ -5,7 +5,8 @@ import { TeamInvite } from "./teamInvite";
 import { Matchup } from "./matchup";
 import { Team as TeamInterface, TeamMember } from "../../Interfaces/team";
 import { BaseTournament } from "../../Interfaces/tournament";
-import { ModeDivisionType } from "../MCA_AYIM/modeDivision";
+import { MatchupSet } from "./matchupSet";
+import { ModeDivisionType } from "../../Interfaces/modes";
 
 @Entity()
 export class Team extends BaseEntity {
@@ -25,8 +26,10 @@ export class Team extends BaseEntity {
     @Column({ type: "int", default: 0 })
         timezoneOffset!: number;
 
-    @ManyToOne(() => User, user => user.teamsManaged)
-        manager!: User;
+    @ManyToOne(() => User, user => user.teamsManaged, {
+        nullable: false,
+    })
+        captain!: User;
 
     @ManyToMany(() => User, user => user.teams)
     @JoinTable()
@@ -56,8 +59,11 @@ export class Team extends BaseEntity {
     @OneToMany(() => Matchup, matchup => matchup.team2)
         matchupsAsTeam2!: Matchup[];
 
-    @OneToMany(() => Matchup, matchup => matchup.first)
-        matchupsFirst!: Matchup[];
+    @OneToMany(() => MatchupSet, set => set.first)
+        setsFirst!: Matchup[];
+
+    @OneToMany(() => MatchupSet, set => set.winner)
+        setWins!: Matchup[];
 
     @OneToMany(() => Matchup, matchup => matchup.winner)
         wins!: Matchup[];
@@ -91,46 +97,48 @@ export class Team extends BaseEntity {
             
     }
 
-    public async teamInterface (): Promise<TeamInterface> {
-        const qualifier = await Matchup
+    public async teamInterface (queryQualifier = false, queryTournaments = false): Promise<TeamInterface> {
+        const qualifier = queryQualifier ? await Matchup
             .createQueryBuilder("matchup")
             .innerJoin("matchup.teams", "team")
             .innerJoin("matchup.stage", "stage")
             .where("team.ID = :teamID", { teamID: this.ID })
             .andWhere("stage.stageType = '0'")
-            .getOne();
+            .getOne() : null;
         const tournaments: BaseTournament[] = this.tournaments?.map(t => ({
             ID: t.ID,
             name: t.name,
-        })) || (await Tournament
-            .createQueryBuilder("tournament")
-            .innerJoin("tournament.teams", "team")
-            .where("team.ID = :teamID", { teamID: this.ID })
-            .select(["tournament.ID", "tournament.name"])
-            .getMany()).map(t => ({
-            ID: t.ID,
-            name: t.name,
-        }));
+        })) || queryTournaments ? (await Tournament
+                .createQueryBuilder("tournament")
+                .innerJoin("tournament.teams", "team")
+                .where("team.ID = :teamID", { teamID: this.ID })
+                .select(["tournament.ID", "tournament.name"])
+                .getMany()).map(t => ({
+                ID: t.ID,
+                name: t.name,
+            })) : [];
         return {
             ID: this.ID,
             name: this.name,
             abbreviation: this.abbreviation,
             timezoneOffset: this.timezoneOffset,
-            avatarURL: this.avatarURL || undefined,
-            manager: {
-                ID: this.manager.ID,
-                username: this.manager.osu.username,
-                osuID: this.manager.osu.userID,
-                BWS: this.manager.userStatistics?.find(s => s.modeDivision.ID === 1)?.BWS ?? 0,
-                isManager: true,
+            avatarURL: this.avatarURL ?? undefined,
+            captain: {
+                ID: this.captain.ID,
+                username: this.captain.osu.username,
+                osuID: this.captain.osu.userID,
+                country: this.captain.country,
+                rank: this.captain.userStatistics?.find(s => s.modeDivision.ID === 1)?.rank ?? 0,
+                isCaptain: true,
             },
             members: this.members.map<TeamMember>(member => {
                 return {
                     ID: member.ID,
                     username: member.osu.username,
                     osuID: member.osu.userID,
-                    BWS: member.userStatistics?.find(s => s.modeDivision.ID === 1)?.BWS ?? 0,
-                    isManager: member.ID === this.manager.ID,
+                    country: member.country,
+                    rank: member.userStatistics?.find(s => s.modeDivision.ID === 1)?.rank ?? 0,
+                    isCaptain: member.ID === this.captain.ID,
                 };
             }),
             pp: this.pp,

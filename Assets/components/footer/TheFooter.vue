@@ -1,13 +1,15 @@
 <template>
     <div 
         class="footer"
-        :class="`footer--${viewTheme}`"
+        :class="`footer--${viewTheme} footer--${site}`"
     >
         <slot />
         
         <language-switcher />
 
-        <theme-switcher />
+        <theme-switcher 
+            v-if="site !== 'open'"
+        />
     </div>
 </template>
 
@@ -25,6 +27,7 @@ import ThemeSwitcher from "./ThemeSwitcher.vue";
     },
 })
 export default class TheFooter extends Vue {
+    @State site!: string;
     @State viewTheme!: "light" | "dark";
 
     isSmall = false;
@@ -52,6 +55,10 @@ export default class TheFooter extends Vue {
     &--dark {
         background-color: $dark;
         color: white;
+    }
+    &--open {
+        border-top: 1px solid white;
+        background-color: $open-red;
     }
     bottom: 0;
 

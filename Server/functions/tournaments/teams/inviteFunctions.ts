@@ -10,10 +10,10 @@ export async function invitePlayer (team: Team, user: User) {
     if (existingInvite.length > 0 || team.invites?.some(i => i.ID === user?.ID))
         return "User is already invited";
 
-    if (team.members.some(m => m.ID === user?.ID) || team.manager.ID === user?.ID)
+    if (team.members.some(m => m.ID === user?.ID) || team.captain.ID === user?.ID)
         return "User is already in the team";
 
-    const invite = new TeamInvite;
+    const invite = new TeamInvite();
     invite.team = team;
     invite.user = user;
 
@@ -22,8 +22,8 @@ export async function invitePlayer (team: Team, user: User) {
 
 export async function inviteAcceptChecks (invite: TeamInvite) {
     const teamTournaments = invite.team.tournaments;
-    if (teamTournaments.some(t => t.status === TournamentStatus.Ongoing))
-        return "Team is in an ongoing tournament";
+    if (teamTournaments.some(t => t.status === TournamentStatus.Ongoing || t.status === TournamentStatus.Finished))
+        return "Team is in an ongoing or has already finished tournament (locked roster)";
 
     const registrationTournaments = teamTournaments.filter(t => t.status === TournamentStatus.Registrations);
     if (registrationTournaments.some(t => invite.team.members.length + 1 > t.maxTeamSize))
@@ -34,11 +34,11 @@ export async function inviteAcceptChecks (invite: TeamInvite) {
             .createQueryBuilder("tournament")
             .innerJoinAndSelect("tournament.teams", "team")
             .innerJoinAndSelect("team.members", "member")
-            .innerJoinAndSelect("team.manager", "manager")
+            .innerJoinAndSelect("team.captain", "captain")
             .where("tournament.ID IN (:...tournaments)", { tournaments: registrationTournaments.map(t => t.ID) })
             .andWhere(new Brackets(qb => {
                 qb.where("member.ID = :userID", { userID: invite.user.ID })
-                    .orWhere("manager.ID = :userID", { userID: invite.user.ID });
+                    .orWhere("captain.ID = :userID", { userID: invite.user.ID });
             }))
             .getExists();
         if (alreadyInTeam)

@@ -2,25 +2,31 @@
     <div class="schedule">
         <div class="schedule_main_content">
             <OpenTitle>
-                SCHEDULE - {{ selectedStage?.abbreviation.toUpperCase() || '' }}
-                <template #selector>
+                SCHEDULE - <span class="schedule_main_content__abbreviation">{{ selectedStage?.abbreviation.toUpperCase() || '' }}</span>
+                <template #right>
                     <StageSelector
                         :not-beginning="selectedStage?.ID !== stageList[0]?.ID"
                         :not-end="selectedStage?.ID !== stageList[stageList.length - 1]?.ID"
                         @prev="index--"
                         @next="index++"
                     >
-                        <template #top_text>
-                            STAGE
-                        </template>
-                        <template #bottom_text>
-                            SELECT
+                        <template #text>
+                            {{ $t("open.components.stageSelector") }}
                         </template>
 
                         <template #stage>
                             {{ selectedStage?.abbreviation.toUpperCase() || '' }}
                         </template>
                     </StageSelector>
+                    <!-- TODO: NOT MAKE THIS A STATIC LINK LOL -->
+                    <ContentButton
+                        class="content_button--red"
+                        :link="'https://docs.google.com/spreadsheets/d/1f2538nh9McAii15EJkHU18fi65ICQihxsmvTK-qhA0w'"
+                        :img-src="require('../../Assets/img/site/open/mappool/sheets-ico.svg')"
+                        external
+                    >
+                        {{ $t('open.qualifiers.mappool.sheets') }}
+                    </ContentButton>
                 </template>
             </OpenTitle>
             <div class="schedule_main_content_matches">
@@ -36,13 +42,15 @@
 
 <script lang="ts">
 import { Vue, Component, Watch } from "vue-property-decorator";
+import { namespace } from "vuex-class";
+
 import OpenTitle from "../../Assets/components/open/OpenTitle.vue";
 import StageSelector from "../../Assets/components/open/StageSelector.vue";
 import ScheduleMatchBox from "../../Assets/components/open/ScheduleMatchBox.vue";
+import ContentButton from "../../Assets/components/open/ContentButton.vue";
+
 import { Tournament } from "../../Interfaces/tournament";
 import { Stage, StageType } from "../../Interfaces/stage";
-
-import { namespace } from "vuex-class";
 import { MatchupList } from "../../Interfaces/matchup";
 
 const openModule = namespace("open");
@@ -52,21 +60,22 @@ const openModule = namespace("open");
         StageSelector,
         OpenTitle,
         ScheduleMatchBox,
+        ContentButton,
     },
     head () {
         return {
-            title: this.$store.state["open"].title,
+            title: this.$store.state.open.title,
             meta: [
-                {hid: "description", name: "description", content: this.$store.state["open"].tournament.description},
+                {hid: "description", name: "description", content: this.$store.state.open.tournament?.description || ""},
 
-                {hid: "og:site_name", property: "og:site_name", content: this.$store.state["open"].title},
-                {hid: "og:title", property: "og:title", content: this.$store.state["open"].title},
+                {hid: "og:site_name", property: "og:site_name", content: this.$store.state.open.title},
+                {hid: "og:title", property: "og:title", content: this.$store.state.open.title},
                 {hid: "og:url", property: "og:url", content: `https://open.corsace.io${this.$route.path}`}, 
-                {hid: "og:description", property: "og:description", content: this.$store.state["open"].tournament.description},
+                {hid: "og:description", property: "og:description", content: this.$store.state.open.tournament?.description || ""},
                 {hid: "og:image",property: "og:image", content: require("../../Assets/img/site/open/banner.png")},
                 
-                {name: "twitter:title", content: this.$store.state["open"].title},
-                {name: "twitter:description", content: this.$store.state["open"].tournament.description},
+                {name: "twitter:title", content: this.$store.state.open.title},
+                {name: "twitter:description", content: this.$store.state.open.tournament?.description || ""},
                 {name: "twitter:image", content: require("../../Assets/img/site/open/banner.png")},
                 {name: "twitter:image:src", content: require("../../Assets/img/site/open/banner.png")},
             ],
@@ -77,9 +86,9 @@ const openModule = namespace("open");
 export default class Schedule extends Vue {
     
     @openModule.State tournament!: Tournament | null;
+    @openModule.State matchupList!: MatchupList[] | null;
 
     stageList: Stage[] = [];
-    matchupList: MatchupList[] = [];
     index = 0;
     
     get selectedStage (): Stage | null {
@@ -89,23 +98,17 @@ export default class Schedule extends Vue {
     @Watch("selectedStage")
     async stageMatchups () {
         if (!this.selectedStage) {
-            this.matchupList = [];
+            this.$store.commit("open/setMatchups", []);
             return;
         }
         
         const ID = this.selectedStage.ID;
-        this.matchupList = [];
+        this.$store.commit("open/setMatchups", []);
 
         await this.pause(500);
         if (ID !== this.selectedStage.ID) return;
 
-        const { data } = await this.$axios.get(`/api/stage/${this.selectedStage.ID}/matchups`);
-
-        this.matchupList = data.matchups.map(matchup => {
-            matchup.date = new Date(matchup.date);
-            return matchup;
-        });
-        this.matchupList.sort((a, b) => a.date.getTime() - b.date.getTime());
+        await this.$store.dispatch("open/setMatchups", this.selectedStage?.ID);
     }
 
     async pause (ms: number) {
@@ -113,8 +116,10 @@ export default class Schedule extends Vue {
     }
 
     mounted () {
-        this.stageList = this.tournament?.stages.filter(stage => stage.stageType !== StageType.Qualifiers) || [];
+        this.stageList = this.tournament?.stages.filter(stage => stage.stageType !== StageType.Qualifiers) ?? [];
         this.index = this.stageList.findIndex(stage => stage.timespan.end.getTime() > Date.now());
+        if (this.index === -1)
+            this.index = this.stageList.length - 1;
     }
 }
 
@@ -124,10 +129,8 @@ export default class Schedule extends Vue {
 @import '@s-sass/_variables';
 
 .schedule {
-    background: linear-gradient(180deg, #1F1F1F 0%, #131313 100%);
 
     &_main_content {
-        background: linear-gradient(180deg, #1B1B1B 0%, #333333 261.55%);
         display: flex;
         align-self: center;
         justify-content: center;
@@ -135,6 +138,10 @@ export default class Schedule extends Vue {
         width: 75vw;
         position: relative;
         padding: 35px;
+
+        &__abbreviation {
+            color: $open-red;
+        }
 
         @media screen and (max-width: $breakpoint-xl) {
             width: 100vw;

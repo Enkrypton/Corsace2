@@ -30,7 +30,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     if (!check)
         return;
 
-    const params = extractParameters<parameters>(m, [
+    const params = await extractParameters<parameters>(m, [
         { name: "pool", paramType: "string" },
         { name: "slot", paramType: "string", postProcess: postProcessSlotOrder },
         { name: "target", paramType: "string", customHandler: extractTargetText },
@@ -40,7 +40,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
     const { target, pool, slot, order } = params;
 
-    const components = await mappoolComponents(m, pool, slot, order || true, true, { text: channelID(m), searchType: "channel" }, unFinishedTournaments, false, undefined, true);
+    const components = await mappoolComponents(m, pool, slot, order ?? true, true, { text: channelID(m), searchType: "channel" }, unFinishedTournaments, false, undefined, true);
     if (!components || !("mappoolMap" in components)) {
         if (components && "slotMod" in components)
             await respond(m, "Invalid slot");
@@ -114,9 +114,9 @@ async function run (m: Message | ChatInputCommandInteraction) {
     if (slotMod.allowedMods)
         apiMap = (await osuClient.beatmaps.getBySetId(parseInt(link[1]), undefined, undefined, undefined, slotMod.allowedMods) as APIBeatmap[]).find(m => m.beatmapId === beatmapID)!;
     const mappoolMapEmbed = await beatmapEmbed(apiMap, slot, set);
-    mappoolMapEmbed.data.author!.name = `${mappoolSlot}: ${mappoolMapEmbed.data.author!.name}`;
+    mappoolMapEmbed.embed.author!.name = `${mappoolSlot}: ${mappoolMapEmbed.embed.author!.name}`;
 
-    await respond(m, `Set **${mappoolSlot}** as finished, and to **${beatmap.beatmapset.artist} - ${beatmap.beatmapset.title} [${beatmap.difficulty}]**`, [mappoolMapEmbed]);
+    await respond(m, `Set **${mappoolSlot}** as finished, and to **${beatmap.beatmapset.artist} - ${beatmap.beatmapset.title} [${beatmap.difficulty}]**`, mappoolMapEmbed);
 
     await mappoolLog(tournament, "finishedMap", assigner, log, mappoolSlot);
     return;

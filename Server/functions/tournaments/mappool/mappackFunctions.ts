@@ -12,6 +12,8 @@ import { Beatmap as APIBeatmap } from "nodesu";
 import respond from "../../../../DiscordBot/functions/respond";
 import { getLink } from "../../../../DiscordBot/functions/getLink";
 import { Readable } from "stream";
+import { BeatmapsetRankedStatus } from "../../../../Models/beatmapset";
+import { cleanLink } from "../../../utils/link";
 
 export async function createPack (m: Message | ChatInputCommandInteraction, bucket: "mappacks" | "mappacksTemp", mappool: Mappool, packName: string, video = false): Promise<string | undefined> {
     const mappoolMaps = mappool.slots.flatMap(s => s.maps);
@@ -23,7 +25,7 @@ export async function createPack (m: Message | ChatInputCommandInteraction, buck
         await respond(m, `**${mappool.name}** doesnt have all finished beatmaps yet, which are ${maps.join(", ")}, remember to run !pfinish or /mappool_finish for them`);
         return;
     }
-    const filteredMaps = mappoolMaps.filter(m => (m.customBeatmap && m.customBeatmap.link) || m.beatmap);
+    const filteredMaps = mappoolMaps.filter(m => (m.customBeatmap?.link) ?? m.beatmap);
     if (filteredMaps.length === 0) {
         await respond(m, `**${mappool.name}** doesn't have any downloadable beatmaps`);
         return;
@@ -31,7 +33,7 @@ export async function createPack (m: Message | ChatInputCommandInteraction, buck
     const updatedMaps: MappoolMap[] = [];
     for (const map of filteredMaps) {
         let beatmap = map.beatmap;
-        if (beatmap && beatmap.beatmapset.rankedStatus <= 0) {
+        if (beatmap && beatmap.beatmapset.rankedStatus <= BeatmapsetRankedStatus.Pending) {
             const set = await osuClient.beatmaps.getByBeatmapId(beatmap.ID) as APIBeatmap[];
             const apiMap = set.find(m => m.beatmapId === beatmap!.ID);
             if (!apiMap) {
@@ -47,7 +49,7 @@ export async function createPack (m: Message | ChatInputCommandInteraction, buck
     }
 
     const link = await getLink(m, "mappack", false, true);
-    if (link && !link.endsWith(".zip")) {
+    if (link && !cleanLink(link).endsWith(".zip")) {
         await respond(m, "Pleaseee provide a proper .zip file STOP TROLLING ME");
         return;
     }
@@ -58,11 +60,11 @@ export async function createPack (m: Message | ChatInputCommandInteraction, buck
             zipStream = download(link);
         else {
             const names = updatedMaps.map(m => m.beatmap ? `${m.beatmap.beatmapset.ID} ${m.beatmap.beatmapset.artist} - ${m.beatmap.beatmapset.title}.osz` : `${m.customBeatmap!.ID} ${m.customBeatmap!.artist} - ${m.customBeatmap!.title}.osz`);
-            const dlLinks = updatedMaps.map(m => m.beatmap ? `https://osu.direct/api/d/${m.beatmap!.beatmapsetID}${video ? "" : "n"}` : m.customBeatmap?.link ?? ``).filter(l => l !== ``);
+            const dlLinks = updatedMaps.map(m => m.beatmap ? `https://osu.direct/api/d/${m.beatmap.beatmapsetID}${video ? "" : "n"}` : m.customBeatmap?.link ?? ``).filter(l => l !== ``);
             const streams = dlLinks.map(link => download(link));
             zipStream = zipFiles(streams.map((d, i) => ({ content: d, name: names[i] })));
         }
-    
+
         const s3Key = `${randomUUID()}/${packName}.zip`;
 
         if (bucket === "mappacksTemp") {
@@ -88,7 +90,7 @@ export async function deletePack (bucket: "mappacks" | "mappacksTemp", mappool: 
     const s3Key = gets3Key(bucket, mappool);
     if (s3Key)
         await buckets[bucket].deleteObject(s3Key);
-    
+
     mappool.mappackLink = mappool.mappackExpiry = null;
     await mappool.save();
 }

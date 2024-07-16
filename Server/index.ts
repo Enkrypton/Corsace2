@@ -9,6 +9,8 @@ import Session from "koa-session";
 import { cache } from "./cache";
 import { setupPassport } from "./passportFunctions";
 
+import githubRouter from "./api/routes/github";
+
 import osuURIRouter from "./api/routes/osuuri";
 
 import centrifugoRouter from "./api/routes/centrifugo";
@@ -99,6 +101,7 @@ koa.use(koaCash({
 koa.use(Mount("/public", serve(path.join(__dirname, "../public"))));
 
 // General
+koa.use(Mount("/api/github", githubRouter.routes()));
 koa.use(Mount("/api/osuuri", osuURIRouter.routes()));
 
 /// Centrifugo
@@ -164,7 +167,7 @@ koa.use(Mount("/api/referee/matchups", refereeMatchupsRouter.routes()));
 koa.use(Mount("/api/referee/bancho", refereeBanchoRouter.routes()));
 
 ormConfig.initialize()
-    .then(async (connection) => {
+    .then((connection) => {
         console.log(`Connected to the ${connection.options.database} database!`);
         setupPassport();
         koa.listen(config.api.port);

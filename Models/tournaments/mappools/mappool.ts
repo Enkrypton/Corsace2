@@ -1,9 +1,8 @@
-import { BaseEntity, Column, CreateDateColumn, Entity, ManyToMany, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
+import { BaseEntity, Column, CreateDateColumn, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn } from "typeorm";
 import { Round } from "../round";
 import { Stage } from "../stage";
 import { MappoolSlot } from "./mappoolSlot";
 import { User } from "../../user";
-import { Matchup } from "../matchup";
 
 @Entity()
 export class Mappool extends BaseEntity {
@@ -14,7 +13,9 @@ export class Mappool extends BaseEntity {
     @CreateDateColumn()
         createdAt!: Date;
 
-    @ManyToOne(() => User, user => user.mappoolsCreated)
+    @ManyToOne(() => User, user => user.mappoolsCreated, {
+        nullable: false,
+    })
         createdBy!: User;
 
     @Column()
@@ -41,7 +42,9 @@ export class Mappool extends BaseEntity {
     @Column()
         order!: number;
 
-    @ManyToOne(() => Stage, stage => stage.mappool)
+    @ManyToOne(() => Stage, stage => stage.mappool, {
+        nullable: false,
+    })
         stage!: Stage;
 
     @ManyToOne(() => Round, round => round.mappool)
@@ -49,8 +52,5 @@ export class Mappool extends BaseEntity {
 
     @OneToMany(() => MappoolSlot, mappoolSlot => mappoolSlot.mappool)
         slots!: MappoolSlot[];
-
-    @ManyToMany(() => Matchup, matchup => matchup.mappoolsBanned)
-        bannedInMatchups?: Matchup[] | null;
 
 }

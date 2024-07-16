@@ -1,4 +1,4 @@
-import { ChatInputCommandInteraction, Message, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, Message, PermissionFlagsBits, PermissionsBitField, SlashCommandBuilder } from "discord.js";
 import { Command } from "..";
 import { securityChecks } from "../../functions/tournamentFunctions/securityChecks";
 import { TournamentRole } from "../../../Models/tournaments/tournamentRole";
@@ -26,7 +26,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
         return;
     }
 
-    const params = extractParameters<parameters>(m, [
+    const params = await extractParameters<parameters>(m, [
         { name: "role", paramType: "role" },
         { name: "remove", shortName: "r", paramType: "boolean", optional: true },
         { name: "role_type", paramType: "string", optional: true },
@@ -37,7 +37,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
     const { role, remove, role_type } = params;
 
     if (!remove && !role_type) {
-        await respond(m, "Listen ur either gonna have to tell me to remove a role, or ur gonna have to specify the role type u want to add\n\nThe list of role types are:\nParticipants (participants)\nStaff (staff)\nManagers (managers)\nMappoolers (mappoolers)\nMappers (mappers)\nTestplayers (testplayers)\nReferees (referees)\nStreamers (streamers)\nCommentators (commentators)\n\nExample: `!tournament_role @Tournament Staff`");
+        await respond(m, "Listen ur either gonna have to tell me to remove a role, or ur gonna have to specify the role type u want to add\n\nThe list of role types are:\nParticipants (participants)\nStaff (staff)\nCaptains (captains)\nMappoolers (mappoolers)\nMappers (mappers)\nTestplayers (testplayers)\nReferees (referees)\nStreamers (streamers)\nCommentators (commentators)\n\nExample: `!tournament_role @Tournament Staff`");
         return;
     }
 
@@ -87,8 +87,13 @@ async function run (m: Message | ChatInputCommandInteraction) {
     }
 
     const roleType = role_type.toLowerCase().charAt(0).toUpperCase() + role_type.toLowerCase().slice(1);
-    if (TournamentRoleType[roleType] === undefined) {
-        await respond(m, `Invalid role type \`${role_type}\` (Valid role types are: Participants, Staff, Managers, Mappoolers, Mappers, Testplayers, Referees, Streamers, Commentators, Designers, Developers)`);
+    if (!(roleType in TournamentRoleType)) {
+        await respond(m, `Invalid role type \`${role_type}\` (Valid role types are: Participants, Staff, Captains, Mappoolers, Mappers, Testplayers, Referees, Streamers, Commentators, Designers, Developers)`);
+        return;
+    }
+
+    if (role_type === "Organizer" && !(m.member!.permissions as Readonly<PermissionsBitField>).has(PermissionFlagsBits.Administrator)) {
+        await respond(m, "U need to be an administrator of the server to add an organizer role");
         return;
     }
 
@@ -104,8 +109,9 @@ async function run (m: Message | ChatInputCommandInteraction) {
     }
 
     tournamentRole = new TournamentRole();
+    tournamentRole.createdBy = user;
     tournamentRole.roleID = discordRole.id;
-    tournamentRole.roleType = TournamentRoleType[roleType];
+    tournamentRole.roleType = TournamentRoleType[roleType as keyof typeof TournamentRoleType];
     tournamentRole.tournament = tournament;
     await tournamentRole.save();
     await respond(m, `Added ${discordRole.name} to ${tournament.name} as a \`${roleType}\` role`);
@@ -136,8 +142,8 @@ const data = new SlashCommandBuilder()
                 value: "Staff",
             },
             {
-                name: "Managers",
-                value: "Managers",
+                name: "Captains",
+                value: "Captains",
             },
             {
                 name: "Mappoolers",
@@ -170,6 +176,10 @@ const data = new SlashCommandBuilder()
             {
                 name: "Developer",
                 value: "Developer",
+            },
+            {
+                name: "Organizer",
+                value: "Organizer",
             }))
     .setDMPermission(false);
 

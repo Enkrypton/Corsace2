@@ -77,9 +77,7 @@ export const modAcronyms = {
 export const freemodRGB: [number, number, number] = [158, 216, 84];
 export const freemodButFreerRGB: [number, number, number] = [235, 235, 235];
 
-const modsRGB: {
-    [key: number]: [number, number, number];
-} = {
+const modsRGB: Record<number, [number, number, number]> = {
     0: [41, 168, 249],
     1: [242, 129, 65],
     2: [236, 255, 184],
@@ -146,7 +144,8 @@ export function acronymtoMods (text: string): ModsType | undefined {
         return;
     let val = 0;
     for (const mod of modStrings)
-        val += modAcronyms[mod.toUpperCase()];
+        if (mod.toUpperCase() in modAcronyms)
+            val += modAcronyms[mod.toUpperCase() as keyof typeof modAcronyms];
     
     if (isNaN(val))
         return;
@@ -164,10 +163,9 @@ export function modsToAcronym (mod?: ModsType): string {
         return "NM";
     let text = "";
     for (const acronym in modAcronyms) {
-        const modValue = modAcronyms[acronym];
-        if ((mod & modValue) !== 0) {
+        const modValue = modAcronyms[acronym as keyof typeof modAcronyms];
+        if ((mod & modValue) !== 0)
             text += acronym;
-        }
     }
     return text;
 }
@@ -175,25 +173,25 @@ export function modsToAcronym (mod?: ModsType): string {
 /**
  * Applies mod affects to different aspects of a beatmap (DOES NOT AFFECT SR!!!)
  * @param beatmap The beatmap to change aspects of
- * @param difficultyscaler HR or EZ (undefined if neither)
- * @param speedScaler DT/NC or HT (undefined if neither)
+ * @param mods A string consisting of mods as 2 letter acronyms
  * @returns The beatmap with mods applied
  */
 export function applyMods (beatmap: Beatmap, mods: string): Beatmap {
-    if (mods.includes("HR")) {
+    mods = mods.toLowerCase();
+    if (mods.includes("hr")) {
         beatmap.diffSize = Math.min(10, beatmap.diffSize * 1.3);
         beatmap.diffApproach = Math.min(10, beatmap.diffApproach * 1.4);
         beatmap.diffOverall = Math.min(10, beatmap.diffOverall * 1.4);
         beatmap.diffDrain = Math.min(10, beatmap.diffDrain * 1.4);
-    } else if (mods.includes("EZ")) {
+    } else if (mods.includes("ez")) {
         beatmap.diffSize /= 2.0;
         beatmap.diffApproach /= 2.0;
         beatmap.diffOverall /= 2.0;
         beatmap.diffDrain /= 2.0;
     }
 
-    if (mods.includes("DT") || mods.includes("NC") || mods.includes("HT")) {
-        const clock = mods.includes("HT") ? 0.75 : 1.5;
+    if (mods.includes("dt") || mods.includes("nc") || mods.includes("ht")) {
+        const clock = mods.includes("ht") ? 0.75 : 1.5;
 
         beatmap.bpm *= clock;
         beatmap.totalLength /= clock;

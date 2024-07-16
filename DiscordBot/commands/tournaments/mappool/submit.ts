@@ -6,7 +6,7 @@ import { securityChecks } from "../../../functions/tournamentFunctions/securityC
 import { extractParameters } from "../../../functions/parameterFunctions";
 import { getLink } from "../../../functions/getLink";
 import { postProcessSlotOrder } from "../../../functions/tournamentFunctions/parameterPostProcessFunctions";
-import { ojsamaParse, ojsamaToCustom } from "../../../functions/beatmapParse";
+import { beatmapParse, parsedBeatmapToCustom } from "../../../functions/beatmapParse";
 import respond from "../../../functions/respond";
 import getUser from "../../../../Server/functions/get/getUser";
 import commandUser from "../../../functions/commandUser";
@@ -14,6 +14,7 @@ import mappoolComponents from "../../../functions/tournamentFunctions/mappoolCom
 import bypassSubmit from "../../../functions/tournamentFunctions/bypassSubmit";
 import channelID from "../../../functions/channelID";
 import { TournamentRoleType, TournamentChannelType } from "../../../../Interfaces/tournament";
+import { cleanLink } from "../../../../Server/utils/link";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
@@ -32,12 +33,12 @@ async function run (m: Message | ChatInputCommandInteraction) {
     if (!link)
         return;
 
-    if (!link.endsWith(".osz")) {
+    if (!cleanLink(link).endsWith(".osz")) {
         await respond(m, "Pleaseee provide a proper .osz file STOP TROLLING ME");
         return;
     }
 
-    const params = extractParameters<parameters>(m, [
+    const params = await extractParameters<parameters>(m, [
         { name: "pool" , paramType: "string"},
         { name: "slot", paramType: "string", postProcess: postProcessSlotOrder },
         { name: "difficulty", paramType: "string", optional: true },
@@ -47,7 +48,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
     const { pool, slot, order, difficulty } = params;
 
-    const components = await mappoolComponents(m, pool, slot, order || true, true, { text: channelID(m), searchType: "channel" }, unFinishedTournaments);
+    const components = await mappoolComponents(m, pool, slot, order ?? true, true, { text: channelID(m), searchType: "channel" }, unFinishedTournaments);
     if (!components || !("mappoolMap" in components)) {
         if (components && "slotMod" in components)
             await respond(m, "Invalid slot");
@@ -63,13 +64,13 @@ async function run (m: Message | ChatInputCommandInteraction) {
     }
 
     // Obtain beatmap data
-    const beatmapData = await ojsamaParse(m, difficulty || "", link);
+    const beatmapData = await beatmapParse(m, difficulty ?? "", link, slotMod.allowedMods ?? 0);
     if (!beatmapData?.beatmap) {
         await respond(m, `Can't find **${difficulty !== "" ? `[${difficulty}]` : "a single difficulty(????)"}** in ur osz`);
         return;
     }
 
-    await ojsamaToCustom(m, tournament, mappool, slotMod, mappoolMap, beatmapData, link, user, mappoolSlot);
+    await parsedBeatmapToCustom(m, tournament, mappool, slotMod, mappoolMap, beatmapData, link, user, mappoolSlot);
     return;
 }
 

@@ -126,7 +126,7 @@
                     </div>
                 </div>
             </div>
-            <hr class="line--gray line--nofill line--even-space">
+            <!-- <hr class="line--gray line--nofill line--even-space">
             <div class="create_fields">
                 <div class="create_fields_row">
                     <div class="create_fields_block--label">
@@ -135,16 +135,16 @@
                     <div class="create_fields_block">
                         <div 
                             class="create_fields_block--highlight"
-                            v-html="$t('open.create.teamManagers')" 
+                            v-html="$t('open.create.teamCaptains')" 
                         />
                         <div 
                             class="create_fields_block--highlight"
-                            v-html="$t('open.create.teamManagersFree')"
+                            v-html="$t('open.create.teamCaptainsFree')"
                         />
                         <br>
                         <div 
                             class="create_fields_block--highlight"
-                            v-html="$t('open.create.selectManager')" 
+                            v-html="$t('open.create.selectCaptain')" 
                         />
                         <div class="create_fields_block--spaced create_fields_block--inline">
                             <input 
@@ -155,12 +155,12 @@
                             <div
                                 class="create_fields__finetext create_fields__finetext--spaced create_fields__finetext--clickable"
                                 @click="isNotPlaying = !isNotPlaying" 
-                                v-html="$t('open.create.confirmManager')" 
+                                v-html="$t('open.create.confirmCaptain')" 
                             />
                         </div>
                     </div>
                 </div>
-            </div>
+            </div> -->
             <div class="create_submit">
                 <ContentButton 
                     class="content_button content_button--red_lg"
@@ -198,18 +198,18 @@ const openModule = namespace("open");
     },
     head () {
         return {
-            title: this.$store.state["open"].title,
+            title: this.$store.state.open.title,
             meta: [
-                {hid: "description", name: "description", content: this.$store.state["open"].tournament.description},
+                {hid: "description", name: "description", content: this.$store.state.open.tournament?.description || ""},
 
-                {hid: "og:site_name", property: "og:site_name", content: this.$store.state["open"].title},
-                {hid: "og:title", property: "og:title", content: this.$store.state["open"].title},
+                {hid: "og:site_name", property: "og:site_name", content: this.$store.state.open.title},
+                {hid: "og:title", property: "og:title", content: this.$store.state.open.title},
                 {hid: "og:url", property: "og:url", content: `https://open.corsace.io${this.$route.path}`}, 
-                {hid: "og:description", property: "og:description", content: this.$store.state["open"].tournament.description},
+                {hid: "og:description", property: "og:description", content: this.$store.state.open.tournament?.description || ""},
                 {hid: "og:image",property: "og:image", content: require("../../../Assets/img/site/open/banner.png")},
                 
-                {name: "twitter:title", content: this.$store.state["open"].title},
-                {name: "twitter:description", content: this.$store.state["open"].tournament.description},
+                {name: "twitter:title", content: this.$store.state.open.title},
+                {name: "twitter:description", content: this.$store.state.open.tournament?.description || ""},
                 {name: "twitter:image", content: require("../../../Assets/img/site/open/banner.png")},
                 {name: "twitter:image:src", content: require("../../../Assets/img/site/open/banner.png")},
             ],
@@ -229,13 +229,12 @@ export default class Create extends Vue {
     };
 
     @openModule.State tournament!: Tournament | null;
-    @openModule.State team!: Team | null;
 
     @State loggedInUser!: null | UserInfo;
 
     name = "";
     abbreviation = "";
-    isNotPlaying = false;
+    // isNotPlaying = false;
 
     loading = false;
     sizeError = false;
@@ -290,11 +289,9 @@ export default class Create extends Vue {
         reader.readAsDataURL(this.image);
     }
 
-    mounted () {
+    async mounted () {
         if (!this.loggedInUser?.discord.userID)
-            this.$router.push("/");
-        else if (this.team)
-            this.$router.push(`/team`);
+            await this.$router.push("/");
     }
 
     async create () {
@@ -324,10 +321,11 @@ export default class Create extends Vue {
 
         ({ name: this.name, abbreviation: this.abbreviation } = validate);
 
-        const { data: res } = await this.$axios.post("/api/team/create", {
+        const { data: res } = await this.$axios.post<{ team: Team, error?: string }>("/api/team/create", {
             name: this.name,
             abbreviation: this.abbreviation,
-            isPlaying: !this.isNotPlaying,
+            // isPlaying: !this.isNotPlaying,
+            isPlaying: true,
             timezoneOffset: timezone,
         });
 
@@ -335,12 +333,12 @@ export default class Create extends Vue {
             if (this.image) {
                 const formData = new FormData();
                 formData.append("avatar", this.image, this.image.name);
-                const { data: resAvatar } = await this.$axios.post(`/api/team/${res.team.ID}/avatar`, formData, {
+                const { data: resAvatar } = await this.$axios.post<{ avatar: string }>(`/api/team/${res.team.ID}/avatar`, formData, {
                     headers: {
                         "Content-Type": "multipart/form-data",
                     },
                 });
-                if (resAvatar.error)
+                if (!resAvatar.success)
                     alert(`Error adding team avatar:\n${resAvatar.error}\n\nYou can try adding a team avatar again on the team page`);
             }
 
@@ -348,8 +346,8 @@ export default class Create extends Vue {
                 alert(`Error making team:\n${res.error}`);
 
             this.loading = false;
-            this.$store.dispatch("open/setTeam");
-            this.$router.push(`/team/${res.team.ID}`);
+            await this.$store.dispatch("open/setMyTeams");
+            await this.$router.push(`/team/${res.team.ID}`);
         } else
             alert(res.error);
     }
@@ -363,7 +361,6 @@ export default class Create extends Vue {
 .create {
 
     &__container {
-        background: linear-gradient(180deg, #1B1B1B 0%, #333333 261.55%);
         align-self: center;
         display: flex;
         flex-direction: column;

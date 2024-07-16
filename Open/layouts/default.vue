@@ -6,6 +6,7 @@
         />
         <the-header
             class="header"
+            :notif="teamInvites && teamInvites.length > 0"
         >
             <a href="/">          
                 <img
@@ -60,65 +61,26 @@
                     {{ $t("open.navbar.staff") }}
                 </NuxtLink>
             </div>
-            <template #login>         
-                <div 
-                    v-if="loggedInUser?.discord.userID"
-                    class="header__manage_teams"
+            <template #menu>
+                <NuxtLink
+                    to="/teams?s=my"
                 >
-                    <NuxtLink
-                        v-if="team"
-                        :to="`/team/${team.ID}`"
-                        class="header__manage_teams_item"
-                    >
-                        {{ team.abbreviation.toUpperCase() }}
-                    </NuxtLink>
-                    <NuxtLink
-                        v-else
-                        to="/team/create"
-                        class="header__manage_teams_item"
-                    >
-                        {{ $t("open.navbar.createTeam") }}
-                    </NuxtLink>
-                    <a
-                        v-if="!team"
-                        class="header__manage_teams_item"
-                        @click="togglePopup()"
-                    >
-                        {{ $t("open.navbar.invitations") }} ({{ teamInvites?.length || 0 }})
-                    </a>
-                </div>
-                <div
-                    v-else
-                    class="header__manage_teams"
+                    <MenuItem>{{ $t("open.navbar.myTeams") }}</MenuItem>
+                </NuxtLink>
+                <NuxtLink
+                    to="/team/invites"
                 >
-                    {{ $t("open.navbar.loginDiscord") }}
-                </div>
-                <div 
-                    v-show="isOpen"
-                    class="header__popup"
-                >
-                    <div class="header__popup_title">
-                        {{ $t("open.navbar.teamInvites") }}
-                    </div>
-                    <hr class="line--red line--no-space">
-                    <ul v-if="!team && teamInvites">
-                        <li
-                            v-for="invite in teamInvites"
-                            :key="invite.ID"
-                        > 
-                            {{ invite.name }}
-                            <div class="header_popup_accept">
-                                <a @click="inviteAction(invite.ID, 'accept')">ACCEPT</a> | <a @click="inviteAction(invite.ID, 'decline')">DECLINE</a>
-                            </div>
-                        </li>
-                    </ul>
-                    <div v-else>
-                        {{ $t("open.navbar.noInvites") }}
-                    </div>
-                </div>
+                    <MenuItem>
+                        {{ $t("open.navbar.invitations") }}
+                        <div
+                            v-if="teamInvites && teamInvites.length > 0"
+                            class="header__notification"
+                        />
+                    </MenuItem>
+                </NuxtLink>
             </template>
         </the-header>
-
+        
         <nuxt 
             class="main" 
             :class="`main--${viewTheme}`"
@@ -211,25 +173,62 @@
                     </template>
                     {{ $t("open.footer.youtube") }}
                 </Tooltip>
+                <Tooltip>
+                    <template #icon>
+                        <a
+                            class="socials__link"
+                            href="https://github.com/corsace/corsace"
+                            target="_blank"
+                        >
+                            <img
+                                class="socials__icon"
+                                :class="`socials__icon--${viewTheme}`"
+                                src="../../Assets/img/social/github.png"
+                                alt=""
+                            >
+                        </a>
+                    </template>
+                    {{ $t("open.footer.github") }}
+                </Tooltip>
+                <Tooltip>
+                    <template #icon>
+                        <a
+                            class="socials__link"
+                            href="https://docs.google.com/spreadsheets/d/1f2538nh9McAii15EJkHU18fi65ICQihxsmvTK-qhA0w"
+                            target="_blank"
+                        >
+                            <img
+                                class="socials__icon"
+                                :class="`socials__icon--${viewTheme}`"
+                                src="../../Assets/img/social/sheets.png"
+                                alt=""
+                            >
+                        </a>
+                    </template>
+                    {{ $t("open.footer.sheet") }}
+                </Tooltip>
             </div>
             <div 
                 name="temp"
-                style="width: 85%;"
+                style="width: 79%;"
             />
         </the-footer>
     </div>
 </template>
 
 <script lang="ts">
-import { Vue, Component } from "vue-property-decorator";
+import { Mixins, Component } from "vue-property-decorator";
 import { State, namespace } from "vuex-class";
+import { ExtendedPublicationContext } from "centrifuge";
+import CentrifugeMixin from "../../Assets/mixins/centrifuge";
 
 import { UserInfo } from "../../Interfaces/user";
-import { BaseTeam, Team } from "../../Interfaces/team";
+import { BaseTeam } from "../../Interfaces/team";
 
 import DevBanner from "../../Assets/components/DevBanner.vue";
 import TheHeader from "../../Assets/components/header/TheHeader.vue";
 import TheFooter from "../../Assets/components/footer/TheFooter.vue";
+import MenuItem from "../../Assets/components/header/MenuItem.vue";
 import Tooltip from "../../Assets/components/Tooltip.vue";
 
 const openModule = namespace("open");
@@ -239,25 +238,20 @@ const openModule = namespace("open");
         DevBanner,
         TheHeader,
         TheFooter,
+        MenuItem,
         Tooltip,
     },
     middleware: "index",
 })
-export default class Default extends Vue {
+export default class Default extends Mixins(CentrifugeMixin) {
     
     @State viewTheme!: "light" | "dark";
     @State loggedInUser!: null | UserInfo;
 
-    @openModule.State team!: Team | null;
     @openModule.State teamInvites!: BaseTeam[] | null;
 
     devBanner = true;
     isSmall = false;
-    isOpen = false;
-
-    togglePopup () {
-        this.isOpen = !this.isOpen;
-    }
 
     async mounted () {
         if (process.client) {
@@ -267,20 +261,17 @@ export default class Default extends Vue {
             });
         }
 
-        await Promise.all([
-            this.$store.dispatch("setViewTheme", "dark"),
-        ]);
+        await this.$store.dispatch("setViewTheme", "dark");
+
+        if (!this.loggedInUser)
+            return;
+
+        await this.initCentrifuge(`invitations:${this.loggedInUser.ID}`);
     }
 
-    async inviteAction (inviteID: number, action: "accept" | "decline") {
-        try {
-            await this.$axios.post(`api/team/invite/${inviteID}/${action}`);
-            await this.$store.dispatch("open/setTeam");
-            await this.$store.dispatch("open/setInvites");
-        } catch (e) {
-            alert("Something went wrong. Contact VINXIS. Error is in console, which can be accessed by pressing F12.");
-            console.log(e);
-        }
+    handleData (ctx: ExtendedPublicationContext) {
+        if (ctx.data.type === "invite")
+            this.$store.commit("open/addInvite", ctx.data.team);
     }
 }
 </script>
@@ -291,86 +282,17 @@ export default class Default extends Vue {
 
 .header {
     border-bottom: 1px solid $open-red;
-    background-image: url("../../Assets/img/site/open/checkers.svg"), linear-gradient(0deg, #0F0F0F -32.92%, #2F2F2F 84.43%);
+    background-image: url("../../Assets/img/site/open/checkers.svg"), linear-gradient(0deg, white, white);
     background-repeat: no-repeat;
     background-position: left center;
     width: 100vw;
     position: relative;
 
-    /*temp */
-    &__popup {
-        padding: 5px;
-        position: absolute;
-        opacity: 1;
-        top: calc(20vh - 100px);
-        left: calc(100% - 20vw - 100px);
-        z-index: 1;
-        border: 1px solid $open-red;
-        background-color: $open-dark;
-        min-height: 200px;
-        min-width: 300px;
-        filter: drop-shadow(0 0 0.75rem $open-red);
-
-        &_title {
-            font-family: $font-commuterssans;
-            margin-bottom: 5px;
-        }
-
-        & ul {
-            padding-left: 0;
-            list-style-type: none;
-            font-family: $font-ggsans;
-            font-weight: 500;
-            
-            & li {
-                padding-bottom: 3px;
-            }
-
-            & a {
-                font-family: $font-ggsans;
-                font-size: $font-sm;
-                text-decoration: none;
-                cursor: pointer;
-                color: $gray;
-
-                &:hover {
-                    color: white;
-                }
-            }
-        }
-    }
-    /*temp*/
-    &__manage_teams {
-        width: 150px;
-        align-self: center;
-        display: flex;
-        flex-direction: column;
-
-        &_item {
-            display: flex;
-            position: relative;
-            padding: 0 5px;
-            font-family: $font-ggsans;
-            font-weight: 500;
-            text-decoration: none;
-
-            &:hover {
-                text-decoration: none;
-                cursor: pointer;
-                color: $open-red;
-            }
-        
-            &:after {
-                content: "";
-                position: absolute;
-                left: -10px;
-                bottom: 8px; 
-                width: 4.5px;
-                height: 4.5px;
-                transform: rotate(-45deg);
-                background-color: $open-red;
-            }
-        }
+    &__notification {
+        width: 8px;
+        height: 8px;
+        border-radius: 100%;
+        background-color: $open-red;
     }
 
     &__logo {
@@ -399,6 +321,7 @@ export default class Default extends Vue {
         &-item {
             font-weight: 600;
             text-decoration: none;
+            color: $open-red;
 
             &:hover {
                 color: $open-red;
@@ -425,11 +348,6 @@ export default class Default extends Vue {
     }
 }
 
-.footer {
-    border-top: 1px solid $open-red;
-    background: linear-gradient(0deg, #0F0F0F -32.92%, #2F2F2F 84.43%);
-}
-
 .socials {
     height: 100%;
     display: flex;
@@ -448,6 +366,7 @@ export default class Default extends Vue {
     &__icon {
         margin-right: 3px;
         height: 20px;
+        filter: brightness(100);
         @include breakpoint(tablet) {
             margin-right: 5px;
             height: 25px;   
@@ -456,12 +375,12 @@ export default class Default extends Vue {
             margin-right: 10px;
             height: 30px;   
         }
-        &--light {
-            filter: invert(1);
-        }
-        &--dark {
-            color: white;
-        }
+        // &--light {
+        //     filter: invert(1);
+        // }
+        // &--dark {
+        //     color: white;
+        // }
     }
 }
 

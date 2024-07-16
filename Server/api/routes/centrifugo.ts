@@ -1,4 +1,4 @@
-import Router from "@koa/router";
+import { CorsaceMiddleware, CorsaceRouter } from "../../corsaceRouter";
 import koaIp from "koa-ip";
 import { config } from "node-config-ts";
 import { StageType } from "../../../Interfaces/stage";
@@ -8,15 +8,13 @@ import { TournamentRole } from "../../../Models/tournaments/tournamentRole";
 import { User } from "../../../Models/user";
 import { discordClient } from "../../discord";
 
-const centrifugoRouter = new Router();
+const centrifugoRouter  = new CorsaceRouter();
 
-const ipWhitelist = koaIp(config.centrifugo.ipWhitelist);
+const ipWhitelist = koaIp(config.centrifugo.ipWhitelist) as CorsaceMiddleware<object>;
 
 interface ConnectResponse {
-    result: {
-        user: string;
-        expire_at?: number;
-    };
+    user: string;
+    expire_at?: number;
 }
 
 interface SubscribeRequest {
@@ -31,12 +29,7 @@ interface SubscribeRequest {
     b64data?: string;
 }
 
-const channelTypes = [ "matchup" ];
-
-async function getChannel (channelType: string, channelID: number): Promise<any | null> {
-    if (!channelTypes.includes(channelType))
-        return null;
-
+async function getChannel (channelType: string, channelID: number): Promise<any> {
     if (channelType === "matchup") {
         return Matchup
             .createQueryBuilder("matchup")
@@ -49,35 +42,44 @@ async function getChannel (channelType: string, channelID: number): Promise<any 
     return `${channelType}:${channelID}`;
 }
 
-centrifugoRouter.get("/publicUrl", async (ctx) => {
-    ctx.body = config.centrifugo.publicUrl;
+centrifugoRouter.$get<{ url: string }>("/publicUrl", async (ctx) => {
+    if (await ctx.cashed())
+        return;
+
+    ctx.body = {
+        success: true,
+        url: config.centrifugo.publicUrl,
+    };
 });
 
-centrifugoRouter.post("/connect", ipWhitelist, async (ctx) => {
+centrifugoRouter.$post<{ result: ConnectResponse }>("/connect", ipWhitelist, (ctx) => {
     if (ctx.state?.user?.ID) {
         ctx.body = {
+            success: true,
             result: {
                 user: `${ctx.state.user.ID}`,
                 // Use undocumented koa session trick. If unavailable, set a 1hr expire time.
                 expire_at: ctx.session?._expire ? Math.ceil(ctx.session?._expire) : Math.ceil(Date.now() / 1000) + 60 * 60,
             },
-        } as ConnectResponse;
+        };
     } else {
         // Allow anonymous connections
         ctx.body = {
+            success: true,
             result: {
                 user: "",
             },
-        } as ConnectResponse;
+        };
     }
 });
 
-centrifugoRouter.post("/subscribe", ipWhitelist, async (ctx) => {
+centrifugoRouter.$post<any>("/subscribe", ipWhitelist, async (ctx) => {
     const body = ctx.request.body as SubscribeRequest;
     const channelName = body.channel;
     if (!channelName.includes(":") || channelName.split(":").length !== 2 || isNaN(parseInt(channelName.split(":")[1]))) {
         ctx.body = {
             error: {
+                success: false,
                 code: 102,
                 message: "unknown channel",
             },
@@ -91,6 +93,7 @@ centrifugoRouter.post("/subscribe", ipWhitelist, async (ctx) => {
     if (!channel) {
         ctx.body = {
             error: {
+                success: false,
                 code: 102,
                 message: "unknown channel",
             },
@@ -98,10 +101,10 @@ centrifugoRouter.post("/subscribe", ipWhitelist, async (ctx) => {
         return;
     }
 
-    if (channel instanceof Matchup && channel.stage?.stageType === StageType.Qualifiers && !channel.stage.tournament.publicQualifiers) {
+    if (channel instanceof Matchup && channel.stage?.stageType === StageType.Qualifiers && !channel.stage.publicScores) {
         let authorized = false;
         const user = body.user ? await User.findOne({ where: { ID: Number(body.user) } }) : null;
-        if (user) {
+        if (user?.discord?.userID) {
             const roles = await TournamentRole
                 .createQueryBuilder("role")
                 .leftJoinAndSelect("role.tournament", "tournament")
@@ -110,8 +113,8 @@ centrifugoRouter.post("/subscribe", ipWhitelist, async (ctx) => {
             if (roles.length > 0) {
                 try {
                     const privilegedRoles = roles.filter(r => unallowedToPlay.some(u => u === r.roleType));
-                    const tournamentServer = await discordClient.guilds.fetch(ctx.state.tournament.server);
-                    const discordMember = await tournamentServer.members.fetch(ctx.state.user.discord.userID);
+                    const tournamentServer = await discordClient.guilds.fetch(channel.stage.tournament.server);
+                    const discordMember = await tournamentServer.members.fetch(user.discord.userID);
                     authorized = privilegedRoles.some(r => discordMember.roles.cache.has(r.roleID));
                 } catch (e) {
                     authorized = false;
@@ -120,6 +123,7 @@ centrifugoRouter.post("/subscribe", ipWhitelist, async (ctx) => {
         }
         if (!authorized) {
             ctx.body = {
+                success: false,
                 error: {
                     code: 103,
                     message: "permission denied",
@@ -130,6 +134,7 @@ centrifugoRouter.post("/subscribe", ipWhitelist, async (ctx) => {
     }
 
     ctx.body = {
+        success: true,
         result: {},
     };
 });

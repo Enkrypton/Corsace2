@@ -25,13 +25,13 @@
                     v-for="member in teamSync.members"
                     :key="member.ID"
                     class="team_tooltip__list__item"
-                    :class="{ 'team_tooltip__list__item--leader': member.isManager }"
+                    :class="{ 'team_tooltip__list__item--leader': member.isCaptain }"
                 >
                     <div class="team_tooltip__list__item--text">
                         {{ member.username }}
                     </div>
-                    <div class="team_tooltip__list__item--text team_tooltip__list__item--text--bws">
-                        {{ Math.round(member.BWS) }} {{ $t("open.components.openCardTeam.bws") }}
+                    <div class="team_tooltip__list__item--text team_tooltip__list__item--text--rank">
+                        #{{ Math.round(member.rank) }}
                     </div>
                 </li>
             </div>
@@ -180,7 +180,7 @@ export default class TeamToolTip extends Vue {
                 position: relative;
                 &:after {
                     content: "";
-                    background-image: url('../../img/site/open/team/manager.svg');
+                    background-image: url('../../img/site/open/team/captain.svg');
                     background-size: 100%;
                     background-repeat: no-repeat;
                     width: 8.4px;
@@ -200,7 +200,7 @@ export default class TeamToolTip extends Vue {
                 letter-spacing: 0em;
                 text-align: left;
 
-                &--bws {
+                &--rank {
                     color: $open-red;
                     font-family: $font-swis721;
                     font-size: 7px;

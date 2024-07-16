@@ -1,18 +1,19 @@
-import { ModeDivisionType, ModeDivision } from "../../Models/MCA_AYIM/modeDivision";
 import { queue } from "async";
 import memoizee from "memoizee";
 import { Beatmap as APIBeatmap } from "nodesu";
 import { config } from "node-config-ts";
-import { Beatmapset } from "../../Models/beatmapset";
 import axios from "axios";
+import { LessThan } from "typeorm";
 import { Beatmap } from "../../Models/beatmap";
-import { OAuth, User } from "../../Models/user";
+import { Beatmapset } from "../../Models/beatmapset";
+import { OsuOAuth, User } from "../../Models/user";
 import { UsernameChange } from "../../Models/usernameChange";
 import { MCAEligibility } from "../../Models/MCA_AYIM/mcaEligibility";
+import { ModeDivision } from "../../Models/MCA_AYIM/modeDivision";
 import { RateLimiterMemory, RateLimiterQueue } from "rate-limiter-flexible";
 import { isPossessive } from "../../Models/MCA_AYIM/guestRequest";
 import { sleep } from "../utils/sleep";
-import { modeList } from "../../Interfaces/modes";
+import { ModeDivisionType, modeList } from "../../Interfaces/modes";
 import { genres, langs } from "../../Interfaces/beatmap";
 import ormConfig from "../../ormconfig";
 
@@ -20,7 +21,7 @@ let bmQueued = 0; // beatmaps inserted in queue
 let bmInserted = 0; // beatmaps inserted in db (no longer in queue)
 let bmsInserted = 0; // beatmapsets inserted in db (no longer in queue)
 
-function timeFormatter (ms: number): string {
+export function timeFormatter (ms: number): string {
     if (isNaN(ms) || ms <= 0)
         return "0:00:00";
 
@@ -42,7 +43,7 @@ const getModeDivison = memoizee(async (modeDivisionId: number) => {
     modeDivisionId += 1;
     let mode = await ModeDivision.findOne({ where: { ID: modeDivisionId }});
     if (!mode) {
-        mode = new ModeDivision;
+        mode = new ModeDivision();
         mode.ID = modeDivisionId;
         mode.name = ModeDivisionType[mode.ID];
         mode = await mode.save();
@@ -51,10 +52,10 @@ const getModeDivison = memoizee(async (modeDivisionId: number) => {
 });
 
 // API call to fetch a user's country.
-async function getMissingOsuUserProperties (userID: number): Promise<{ country: string; username: string; }> {
-    const userApi = (await axios.get(`${config.osu.proxyBaseUrl || "https://osu.ppy.sh"}/api/get_user?k=${config.osu.v1.apiKey}&u=${userID}&type=id`)).data as any[];
+async function getMissingOsuUserProperties (userID: number): Promise<{ country: string | null; username: string | null; }> {
+    const { data: userApi } = await axios.get<any[]>(`${config.osu.proxyBaseUrl ?? "https://osu.ppy.sh"}/api/get_user?k=${config.osu.v1.apiKey}&u=${userID}&type=id`);
     if (userApi.length === 0)
-        return { country: "", username: "" };
+        return { country: null, username: null };
     return {
         country: userApi[0].country,
         username: userApi[0].username,
@@ -63,18 +64,18 @@ async function getMissingOsuUserProperties (userID: number): Promise<{ country: 
 
 const getUser = async (targetUser: { username?: string, userID: number, country?: string }): Promise<User> => {
     let user = await User.findOne({ where: { osu: { userID: `${targetUser.userID}` }}});
-    
+
     if (!user) {
         let country = targetUser.country;
         let username = targetUser.username;
         if (!username || !country) {
             const { country: newCountry, username: newUsername } = await getMissingOsuUserProperties(targetUser.userID);
-            country = newCountry || country || "";
-            username = newUsername || username || "";
+            country = newCountry ?? country ?? "";
+            username = newUsername ?? username ?? "";
         }
 
-        user = new User;
-        user.osu = new OAuth;
+        user = new User();
+        user.osu = new OsuOAuth();
         user.osu.userID = `${targetUser.userID}`;
         user.osu.username = username;
         user.osu.avatar = "https://a.ppy.sh/" + targetUser.userID;
@@ -90,7 +91,7 @@ const getUser = async (targetUser: { username?: string, userID: number, country?
         if (currentUsername && user.osu.username !== currentUsername) {
             // The username from DB doesn't match their current name; adding to history and updating.
             if (!user.otherNames.some(v => v.name === user!.osu.username)) {
-                const nameChange = new UsernameChange;
+                const nameChange = new UsernameChange();
                 nameChange.name = user.osu.username;
                 nameChange.user = user;
                 await nameChange.save();
@@ -102,7 +103,7 @@ const getUser = async (targetUser: { username?: string, userID: number, country?
         if (targetUser.username !== user.osu.username) {
             // The name that we got from a beatmapset isn't their current name according to current API or DB if restricted; adding to history.
             if (!user.otherNames.some(v => v.name === targetUser.username)) {
-                const nameChange = new UsernameChange;
+                const nameChange = new UsernameChange();
                 nameChange.name = targetUser.username;
                 nameChange.user = user;
                 await nameChange.save();
@@ -119,8 +120,8 @@ const getUser = async (targetUser: { username?: string, userID: number, country?
 const getRankers = async (beatmapEvents: BNEvent[]): Promise<User[]> => {
     const rankers: User[] = [];
     if (beatmapEvents.length > 0)
-        for (const bnEvent of beatmapEvents.reverse()) { 
-            // Run from rank to the last disqual/nom_reset event 
+        for (const bnEvent of beatmapEvents.reverse()) {
+            // Run from rank to the last disqual/nom_reset event
             // (or to the beginning of list if no disqual/nom_reset)
             if (bnEvent.type === "rank")
                 continue;
@@ -143,7 +144,7 @@ const getBeatmapSet = memoizee(async (beatmap: APIBeatmap): Promise<Beatmapset> 
         },
     });
     if (!beatmapSet)
-        beatmapSet = new Beatmapset;
+        beatmapSet = new Beatmapset();
 
     beatmapSet.ID = beatmap.setId;
     beatmapSet.approvedDate = beatmap.approvedDate;
@@ -159,13 +160,13 @@ const getBeatmapSet = memoizee(async (beatmap: APIBeatmap): Promise<Beatmapset> 
 
     const user = await getUser({ username: beatmap.creator, userID: beatmap.creatorId });
     beatmapSet.creator = user;
-    
+
     // interOp call to pishi's BN site to get the user IDs of the BNs of a beatmapset.
     // NOTE: The BN site only has nomination data from ~mid 2019 onward.
     const beatmapEvents = await bnsRawData.get(beatmapSet.ID);
     bnsRawData.delete(beatmapSet.ID);
     beatmapSet.rankers = beatmapEvents ? await getRankers(beatmapEvents) : [];
-    
+
     beatmapSet = await beatmapSet.save();
     bmsInserted++;
     return beatmapSet;
@@ -191,7 +192,7 @@ const getMCAEligibility = memoizee(async function(year: number, user: User) {
 
 
 type BeatmapsetID = number;
-export type BNEvent = {
+export interface BNEvent {
     type: "nominate" | "qualify" | "disqualify" | "nomination_reset" | "rank";
     userId: number;
 }
@@ -201,12 +202,13 @@ const getBNsApiCallRawData = async (beatmapSetID: BeatmapsetID): Promise<null | 
     if (config.bn.username && config.bn.secret) {
         try {
             await bnFetchingLimiter.removeTokens(1);
-            return (await axios.get<BNEvent[]>(`https://bn.mappersguild.com/interOp/events/${beatmapSetID}`, {
+            const { data } = await axios.get<BNEvent[]>(`https://bn.mappersguild.com/interOp/events/${beatmapSetID}`, {
                 headers: {
                     username: config.bn.username,
                     secret: config.bn.secret,
                 },
-            })).data;
+            });
+            return data;
         } catch (err: any) {
             console.error("An error occured while fetching BNs for beatmap set " + beatmapSetID);
             console.error(err.stack);
@@ -223,10 +225,10 @@ async function insertBeatmap (apiBeatmap: APIBeatmap) {
         },
     });
     if (!beatmap)
-        beatmap = new Beatmap;
+        beatmap = new Beatmap();
 
     beatmap.ID = apiBeatmap.id;
-    beatmap.mode = await getModeDivison(apiBeatmap.mode as number);
+    beatmap.mode = await getModeDivison(apiBeatmap.mode!);
     beatmap.difficulty = apiBeatmap.version;
     beatmap.circleSize = apiBeatmap.CS;
     beatmap.approachRate = apiBeatmap.AR;
@@ -252,8 +254,9 @@ async function insertBeatmap (apiBeatmap: APIBeatmap) {
 
     if (!isPossessive(beatmap.difficulty) && !isNaN(apiBeatmap.approvedDate.getUTCFullYear())) {
         const eligibility = await getMCAEligibility(apiBeatmap.approvedDate.getUTCFullYear(), beatmap.beatmapset.creator);
-        if (!eligibility[modeList[apiBeatmap.mode as number]]) {
-            eligibility[modeList[apiBeatmap.mode as number]] = true;
+        const mode = modeList[apiBeatmap.mode!];
+        if (mode in ModeDivisionType) {
+            eligibility[mode as keyof typeof ModeDivisionType] = true;
             eligibility.storyboard = true;
             await eligibility.save();
         }
@@ -284,10 +287,7 @@ async function script () {
     console.log("This script will automatically continue in 5 seconds. Cancel using Ctrl+C.");
     await sleep(5000);
 
-    const conn = await ormConfig.initialize();
-    // ensure schema is up-to-date
-    await conn.synchronize();
-    console.log("DB schema is now up-to-date!");
+    await ormConfig.initialize();
     const start = Date.now();
 
     const processingQueue = queue(async (beatmap: APIBeatmap, cb: () => void) => {
@@ -301,12 +301,12 @@ async function script () {
     };
     const progressInterval = setInterval(printStatus, 1000);
 
-    let since = new Date((await Beatmapset.findOne({ where: {}, order: { approvedDate: "DESC" } }))?.approvedDate || new Date("2006-01-01"));
+    let since = new Date((await Beatmapset.findOne({ where: { approvedDate: LessThan(new Date(`${year}-01-01`)) }, order: { approvedDate: "DESC" } }))?.approvedDate ?? new Date("2006-01-01"));
     console.log(`Fetching all beatmaps starting from ${since.toJSON()} until ${year}-12-31...`);
     printStatus();
     const queuedBeatmapIds: number[] = [];
     while (since.getTime() < until.getTime()) {
-        const newBeatmapsApi = (await axios.get(`${config.osu.proxyBaseUrl || "https://osu.ppy.sh"}/api/get_beatmaps?k=${config.osu.v1.apiKey}&since=${(new Date(since.getTime() - 1000)).toJSON().slice(0,19).replace("T", " ")}`)).data as any[];
+        const { data: newBeatmapsApi } = await axios.get<any[]>(`${config.osu.proxyBaseUrl ?? "https://osu.ppy.sh"}/api/get_beatmaps?k=${config.osu.v1.apiKey}&since=${(new Date(since.getTime() - 1000)).toJSON().slice(0,19).replace("T", " ")}`);
         for(const newBeatmapApi of newBeatmapsApi) {
             const newBeatmap = new APIBeatmap(newBeatmapApi);
             if(queuedBeatmapIds.includes(newBeatmap.id))
@@ -322,7 +322,9 @@ async function script () {
             }
 
             queuedBeatmapIds.push(newBeatmap.id);
-            processingQueue.push(newBeatmap);
+            processingQueue.push(newBeatmap).catch((err) => {
+                console.error("An error occured while processing beatmap " + newBeatmap.id, err);
+            });
             bmQueued++;
         }
     }

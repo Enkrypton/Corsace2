@@ -1,10 +1,11 @@
-import { ChatInputCommandInteraction, EmbedBuilder, Message, SlashCommandBuilder } from "discord.js";
+import { ChatInputCommandInteraction, Message, SlashCommandBuilder } from "discord.js";
 import { Command } from "..";
 import { Team } from "../../../Models/tournaments/team";
 import { extractParameter } from "../../functions/parameterFunctions";
 import getTournament from "../../functions/tournamentFunctions/getTournament";
 import channelID from "../../functions/channelID";
 import respond from "../../functions/respond";
+import { EmbedBuilder } from "../../functions/embedBuilder";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
@@ -18,7 +19,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
     const teams = await Team
         .createQueryBuilder("team")
-        .leftJoinAndSelect("team.manager", "manager")
+        .leftJoinAndSelect("team.captain", "captain")
         .leftJoinAndSelect("team.members", "member")
         .leftJoin("team.tournaments", "tournament")
         .where("tournament.ID = :tournamentID", { tournamentID: tournament.ID })
@@ -28,14 +29,14 @@ async function run (m: Message | ChatInputCommandInteraction) {
         .setTitle(`Teams for ${tournament.name}`)
         .setDescription(
             teams.map(team => {
-                return `**${team.name}** (${team.abbreviation})\n**Manager:** ${team.manager.osu.username} <@${team.manager.discord.userID}>\n**Members:** ${team.members.map(m => m.osu.username).join(", ")}`;
+                return `**${team.name}** (${team.abbreviation})\n**Captain:** ${team.captain.osu.username} <@${team.captain.discord.userID}>\n**Members:** ${team.members.map(m => m.osu.username).join(", ")}`;
             }).join("\n\n"))
         .setFooter({
             text: `Requested by ${m instanceof Message ? m.author.username : m.user.username}`,
-            iconURL: (m instanceof Message ? m.author.avatarURL() : m.user.avatarURL()) || undefined,
+            icon_url: (m instanceof Message ? m.author.avatarURL() : m.user.avatarURL()) ?? undefined,
         });
 
-    await respond(m, undefined, [ embed ]);
+    await respond(m, undefined, embed);
 }
 
 const data = new SlashCommandBuilder()

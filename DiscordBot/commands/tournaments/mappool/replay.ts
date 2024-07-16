@@ -16,6 +16,7 @@ import mappoolLog from "../../../functions/tournamentFunctions/mappoolLog";
 import { MappoolReplay } from "../../../../Models/tournaments/mappools/mappoolReplay";
 import { extractTargetText } from "../../../functions/tournamentFunctions/paramaterExtractionFunctions";
 import getStaff from "../../../functions/tournamentFunctions/getStaff";
+import { cleanLink } from "../../../../Server/utils/link";
 
 async function run (m: Message | ChatInputCommandInteraction) {
     if (m instanceof ChatInputCommandInteraction)
@@ -34,12 +35,12 @@ async function run (m: Message | ChatInputCommandInteraction) {
     if (!link)
         return;
 
-    if (!link.endsWith(".osr")) {
+    if (!cleanLink(link).endsWith(".osr")) {
         await respond(m, "Pleaseee provide a proper .osr file STOP TROLLING ME");
         return;
     }
 
-    const params = extractParameters<parameters>(m, [
+    const params = await extractParameters<parameters>(m, [
         { name: "pool" , paramType: "string" },
         { name: "slot", paramType: "string", postProcess: postProcessSlotOrder },
         { name: "score", paramType: "integer" },
@@ -50,7 +51,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
 
     const { pool, slot, order, score, target } = params;
 
-    const components = await mappoolComponents(m, pool, slot, order || true, true, { text: channelID(m), searchType: "channel" }, unFinishedTournaments, undefined, undefined, undefined, true);
+    const components = await mappoolComponents(m, pool, slot, order ?? true, true, { text: channelID(m), searchType: "channel" }, unFinishedTournaments, undefined, undefined, undefined, true);
     if (!components || !("mappoolMap" in components)) {
         if (components && "slotMod" in components)
             await respond(m, "Invalid slot");

@@ -15,7 +15,7 @@
         <div class="index__content">
             <div class="index__banner">
                 <img src="../../Assets/img/site/open/banner.png">
-                <div>{{ $t('open.home.description') }}</div>
+                <!-- <div>{{ $t('open.home.description') }}</div> -->
             </div>
             <div class="index_portal">
                 <div class="index_portal__section">
@@ -34,7 +34,7 @@
                                 <span class="index_schedule__time">{{ new Date(tournament.registrations.start || "").toLocaleString('en-US', optionsRange) }} - {{ new Date(tournament.registrations.end || "").toLocaleString('en-US', optionsRange) }}</span>
                             </li>
                             <li 
-                                v-for="round in tournament?.stages"
+                                v-for="round in tournament?.stages || []"
                                 :key="round.name"
                                 class="index_schedule__group"
                             >
@@ -47,29 +47,29 @@
                 </div>
                 <!--- MIDDLE: middle-->
                 <div class="index_portal__section">
-                    <OpenButton
+                    <OpenFrontPageButton
                         :link="'/qualifiers'"
                     >
                         <template #title>
                             {{ $t('open.home.button.qualifiersMappool') }}
                         </template>
                         {{ $t('open.home.button.mappoolDownload') }}
-                    </OpenButton>
-                    <OpenButton 
+                    </OpenFrontPageButton>
+                    <OpenFrontPageButton 
                         disabled
                     />         
                 </div>
                 <!-- RIGHT: register your team-->
                 <div class="index_portal__section">
-                    <OpenButton
+                    <OpenFrontPageButton
                         :link="loggedInUser ? loggedInUser.discord.username ? '/team/create' : '/api/login/discord?site=open&redirect=/team/create' : '/api/login/osu?site=open&redirect=/'"
                         :external="loggedInUser?.discord.username ? false : true"
                     >
                         <template #title>
                             {{ $t('open.home.button.register') }}
                         </template>
-                        {{ $t('open.home.button.registrationsEnd') }} {{ new Date(tournament?.registrations.end || "").toLocaleString('en-US', options) }}
-                    </OpenButton>
+                        {{ $t('open.home.button.registrationsEnd', { time: new Date(tournament?.registrations.end || "").toLocaleString('en-US', options) }) }}
+                    </OpenFrontPageButton>
                     <div class="index_portal__text-content">
                         {{ $t('open.home.presentedBy') }}
                         <hr class="line--red line--no-space">
@@ -101,28 +101,28 @@ import { State, namespace } from "vuex-class";
 import { Tournament } from "../../Interfaces/tournament";
 import { UserInfo } from "../../Interfaces/user";
 
-import OpenButton from "../../Assets/components/open/OpenButton.vue";
+import OpenFrontPageButton from "../../Assets/components/open/OpenFrontPageButton.vue";
 
 const openModule = namespace("open");
 
 @Component({
     components: {
-        OpenButton,
+        OpenFrontPageButton,
     },
     head () {
         return {
-            title: this.$store.state["open"].title,
+            title: this.$store.state.open.title,
             meta: [
-                {hid: "description", name: "description", content: this.$store.state["open"].tournament.description},
+                {hid: "description", name: "description", content: this.$store.state.open.tournament?.description || ""},
 
-                {hid: "og:site_name", property: "og:site_name", content: this.$store.state["open"].title},
-                {hid: "og:title", property: "og:title", content: this.$store.state["open"].title},
+                {hid: "og:site_name", property: "og:site_name", content: this.$store.state.open.title},
+                {hid: "og:title", property: "og:title", content: this.$store.state.open.title},
                 {hid: "og:url", property: "og:url", content: `https://open.corsace.io${this.$route.path}`}, 
-                {hid: "og:description", property: "og:description", content: `${this.$store.state["open"].tournament.description}`},
+                {hid: "og:description", property: "og:description", content: `${this.$store.state.open.tournament?.description || ""}`},
                 {hid: "og:image",property: "og:image", content: require("../../Assets/img/site/open/banner.png")},
                 
-                {name: "twitter:title", content: this.$store.state["open"].title},
-                {name: "twitter:description", content: this.$store.state["open"].tournament.description},
+                {name: "twitter:title", content: this.$store.state.open.title},
+                {name: "twitter:description", content: this.$store.state.open.tournament?.description || ""},
                 {name: "twitter:image", content: require("../../Assets/img/site/open/banner.png")},
                 {name: "twitter:image:src", content: require("../../Assets/img/site/open/banner.png")},
             ],
@@ -152,7 +152,7 @@ export default class Default extends Vue {
     @State loggedInUser!: UserInfo | null;
 
     get avatarURL (): string  {
-        return this.loggedInUser?.osu.avatar || "";
+        return this.loggedInUser?.osu.avatar ?? "";
     }
 
     async mounted () {
@@ -174,8 +174,6 @@ export default class Default extends Vue {
     align-items: center;
     justify-content: center;
     height: 100%;
-
-    font-weight: 600;
 
     &__video {
         position: absolute;
@@ -236,7 +234,7 @@ export default class Default extends Vue {
             padding: 5px 0px;
             text-align: start;
             font-size: $font-xl;
-            font-weight: bold;
+            letter-spacing: 0.23em;
         }
 
         &__content {

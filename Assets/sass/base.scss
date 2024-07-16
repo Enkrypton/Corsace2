@@ -147,6 +147,43 @@
     src: url("../fonts/CommutersSans-Regular.ttf");
 }
 
+@font-face {
+    font-family: Univers;
+    src: url("../fonts/UniversRegular.ttf");
+}
+
+@font-face {
+    font-family: Univers;
+    src: url("../fonts/UniversBold.ttf");
+    font-weight: bold;
+}
+
+@font-face {
+    font-family: Univers;
+    src: url("../fonts/UniversLight.ttf");
+    font-weight: lighter;
+}
+
+@font-face {
+    font-family: Univers;
+    src: url("../fonts/UniversCnRg.ttf");
+    font-stretch: condensed;
+}
+
+@font-face {
+    font-family: Univers;
+    src: url("../fonts/UniversCnBold.ttf");
+    font-weight: bold;
+    font-stretch: condensed;
+}
+
+@font-face {
+    font-family: Zurich;
+    src: url("../fonts/Zurich Black Italic.otf");
+    font-style: italic;
+    font-weight: bold;
+}
+
 :root {
     --standard: #fb2475;
     --taiko: #ff890a;
@@ -179,8 +216,8 @@ body {
         font-family: 'Futura PT', 'sans-serif';
     }
     &--open {
-        background: linear-gradient(180deg, #1F1F1F 0%, #131313 100%);
-        font-family: 'gg sans', 'sans-serif';
+        background: #131313;
+        font-family: 'Univers', 'sans-serif';
     }
     height: 100%;
     display: flex;

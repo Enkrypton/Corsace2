@@ -1,13 +1,22 @@
-import Router from "@koa/router";
-import { createQueryBuilder } from "typeorm";
+import { CorsaceRouter } from "../../corsaceRouter";
+import { ModeDivisionType } from "../../../Interfaces/modes";
 import { BeatmapsetRecord, MapperRecord } from "../../../Interfaces/records";
 import { Beatmap } from "../../../Models/beatmap";
 import { Beatmapset } from "../../../Models/beatmapset";
-import { ModeDivisionType } from "../../../Models/MCA_AYIM/modeDivision";
 import { parseQueryParam } from "../../../Server/utils/query";
+import { DefaultState } from "koa";
+import { createQueryBuilder } from "../../../ormconfig";
 
-function mapBeatmapsetRecord (response: Record<string, any>): BeatmapsetRecord[] {
-    return response.map(res => ({
+function mapBeatmapsetRecord (response: {
+    beatmapset_ID: number;
+    beatmapset_artist: string;
+    beatmapset_title: string;
+    creator_ID: number;
+    creator_osuUserid: string;
+    creator_osuUsername: string;
+    value: string;
+}[]): BeatmapsetRecord[] {
+    return Object.values(response).map<BeatmapsetRecord>(res => ({
         beatmapset: {
             id: res.beatmapset_ID,
             artist: res.beatmapset_artist,
@@ -22,12 +31,28 @@ function mapBeatmapsetRecord (response: Record<string, any>): BeatmapsetRecord[]
     }));
 }
 
-function valueToFixed (record: any, digits = 2): any {
+function valueToFixed<T> (record: T & { value: any }, digits = 2): T {
     record.value = parseFloat(record.value).toFixed(digits);
     return record;
 }
 
-function padLengthWithZero (lengthRecord: Record<string, any>): Record<string, any> {
+function padLengthWithZero (lengthRecord: {
+    beatmapset_ID: number;
+    beatmapset_artist: string;
+    beatmapset_title: string;
+    creator_ID: number;
+    creator_osuUserid: string;
+    creator_osuUsername: string;
+    value: string;
+}): {
+    beatmapset_ID: number;
+    beatmapset_artist: string;
+    beatmapset_title: string;
+    creator_ID: number;
+    creator_osuUserid: string;
+    creator_osuUsername: string;
+    value: string;
+} {
     // e.g. a time like 6:5 should actually be 6:05
     const value = lengthRecord.value;
     if (value.slice(-2, -1) === ":") {
@@ -36,15 +61,22 @@ function padLengthWithZero (lengthRecord: Record<string, any>): Record<string, a
     return lengthRecord;
 }
 
-const recordsRouter = new Router();
+const recordsRouter  = new CorsaceRouter<DefaultState>();
 
-recordsRouter.get("/beatmapsets", async (ctx) => {
+recordsRouter.$get<{ records: Record<string, BeatmapsetRecord[]> }>("/beatmapsets", async (ctx) => {
     if (await ctx.cashed())
         return;
 
-    const year = parseInt(parseQueryParam(ctx.query.year) || "") || new Date().getUTCFullYear();
-    const modeString: string = parseQueryParam(ctx.query.mode) || "standard";
-    const modeId = ModeDivisionType[modeString];
+    const year = parseInt(parseQueryParam(ctx.query.year) ?? "") ?? new Date().getUTCFullYear();
+    const modeString: string = parseQueryParam(ctx.query.mode) ?? "standard";
+    if (!(modeString in ModeDivisionType)) {
+        ctx.body = {
+            success: false,
+            error: "Invalid mode, please use standard, taiko, fruits or mania",
+        };
+        return;
+    }
+    const modeId = ModeDivisionType[modeString as keyof typeof ModeDivisionType];
 
     const [
         playcount,
@@ -61,7 +93,16 @@ recordsRouter.get("/beatmapsets", async (ctx) => {
         avgSpinners,
         highestSr,
         lowestSr,
-    ] = await Promise.all([
+    ]: {
+        beatmapset_ID: number;
+        beatmapset_artist: string;
+        beatmapset_title: string;
+        creator_ID: number;
+        creator_osuUserid: string;
+        creator_osuUsername: string;
+        value: string;
+        length?: string;
+    }[][] = await Promise.all([
         // Playcount
         Beatmapset
             .queryRecord(year, modeId)
@@ -205,16 +246,26 @@ recordsRouter.get("/beatmapsets", async (ctx) => {
         lowestSr: mapBeatmapsetRecord(lowestSr).map(o => valueToFixed(o)),
     };
 
-    ctx.body = records;
+    ctx.body = {
+        success: true,
+        records,
+    };
 });
 
-recordsRouter.get("/mappers", async (ctx) => {
+recordsRouter.$get<{ records: Record<string, MapperRecord[]> }>("/mappers", async (ctx) => {
     if (await ctx.cashed())
         return;
 
-    const year = parseInt(parseQueryParam(ctx.query.year) || "") || new Date().getUTCFullYear();
-    const modeString: string = parseQueryParam(ctx.query.mode) || "standard";
-    const modeId = ModeDivisionType[modeString];
+    const year = parseInt(parseQueryParam(ctx.query.year) ?? "") ?? new Date().getUTCFullYear();
+    const modeString: string = parseQueryParam(ctx.query.mode) ?? "standard";
+    if (!(modeString in ModeDivisionType)) {
+        ctx.body = { 
+            success: false,
+            error: "Invalid mode, please use standard, taiko, fruits or mania",
+        };
+        return;
+    }
+    const modeId = ModeDivisionType[modeString as keyof typeof ModeDivisionType];
 
     const [
         mostRanked,
@@ -224,7 +275,7 @@ recordsRouter.get("/mappers", async (ctx) => {
         mostPlayed,
         highestAvgSr,
         lowestAvgSr,
-    ] = await Promise.all([
+    ]: MapperRecord[][] = await Promise.all([
         // Most Ranked
         createQueryBuilder()
             .from(sub => {
@@ -233,6 +284,7 @@ recordsRouter.get("/mappers", async (ctx) => {
                     .innerJoin("beatmapset.creator", "creator")
                     .innerJoin("beatmapset.beatmaps", "beatmap", "beatmap.mode = :mode", { mode: modeId })
                     .where("beatmapset.approvedDate BETWEEN :start AND :end", { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) })
+                    .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
                     .select("creator.osuUsername", "username")
                     .addSelect("creator.osuUserid", "osuId")
                     .addSelect("beatmapset.ID", "beatmapsetId")
@@ -257,6 +309,7 @@ recordsRouter.get("/mappers", async (ctx) => {
                     .innerJoin("beatmapset.creator", "creator")
                     .innerJoin("beatmapset.beatmaps", "beatmap", "beatmap.mode = :mode", { mode: modeId })
                     .where("beatmapset.approvedDate BETWEEN :start AND :end", { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) })
+                    .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
                     .select("creator.osuUsername", "username")
                     .addSelect("creator.osuUserid", "osuId")
                     .addSelect("beatmap.ID", "beatmapId")
@@ -281,6 +334,7 @@ recordsRouter.get("/mappers", async (ctx) => {
                     .innerJoin("beatmapset.creator", "creator")
                     .innerJoin("beatmapset.beatmaps", "beatmap", "beatmap.mode = :mode", { mode: modeId })
                     .where("beatmapset.approvedDate BETWEEN :start AND :end", { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) })
+                    .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
                     .select("creator.osuUsername", "username")
                     .addSelect("creator.osuUserid", "osuId")
                     .addSelect("beatmapset.ID", "beatmapsetId")
@@ -316,6 +370,7 @@ recordsRouter.get("/mappers", async (ctx) => {
         
                         return "NOT EXISTS " + subQuery;
                     })
+                    .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
                     .select("creator.osuUsername", "username")
                     .addSelect("creator.osuUserid", "osuId")
                     .addSelect("beatmapset.ID", "beatmapsetId")
@@ -342,6 +397,7 @@ recordsRouter.get("/mappers", async (ctx) => {
                     .innerJoin("beatmapset.creator", "creator")
                     .innerJoin("beatmapset.beatmaps", "beatmap", "beatmap.mode = :mode", { mode: modeId })
                     .where("beatmapset.approvedDate BETWEEN :start AND :end", { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) })
+                    .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
                     .select("creator.osuUsername", "username")
                     .addSelect("creator.osuUserid", "osuId")
                     .addSelect("beatmapset.ID", "beatmapsetId")
@@ -368,6 +424,7 @@ recordsRouter.get("/mappers", async (ctx) => {
                     .innerJoin("beatmapset.creator", "creator")
                     .innerJoin("beatmapset.beatmaps", "beatmap", "beatmap.mode = :mode", { mode: modeId })
                     .where("beatmapset.approvedDate BETWEEN :start AND :end", { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) })
+                    .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
                     .select("creator.osuUsername", "username")
                     .addSelect("creator.osuUserid", "osuId")
                     .addSelect("beatmapset.ID", "beatmapsetId")
@@ -394,6 +451,7 @@ recordsRouter.get("/mappers", async (ctx) => {
                     .innerJoin("beatmapset.creator", "creator")
                     .innerJoin("beatmapset.beatmaps", "beatmap", "beatmap.mode = :mode", { mode: modeId })
                     .where("beatmapset.approvedDate BETWEEN :start AND :end", { start: new Date(year, 0, 1), end: new Date(year + 1, 0, 1) })
+                    .andWhere("(beatmapset.rankedStatus = '1' OR beatmapset.rankedStatus = '2')")
                     .select("creator.osuUsername", "username")
                     .addSelect("creator.osuUserid", "osuId")
                     .addSelect("beatmapset.ID", "beatmapsetId")
@@ -423,10 +481,13 @@ recordsRouter.get("/mappers", async (ctx) => {
         lowestAvgSr: lowestAvgSr.map(o => valueToFixed(o)),
     };
 
-    ctx.body = records;
+    ctx.body = {
+        success: true,
+        records,
+    };
 });
 
-// recordsRouter.get("/nominators", async (ctx) => {
+// recordsRouter.$get("/nominators", async (ctx) => {
 //     if (await ctx.cashed())
 //         return;
 

@@ -5,7 +5,6 @@ import { MapOrderTeam, StageType } from "../../../../Interfaces/stage";
 import { MapStatus } from "../../../../Interfaces/matchup";
 import { MapOrder } from "../../../../Models/tournaments/mapOrder";
 import { Round } from "../../../../Models/tournaments/round";
-import { TournamentStatus } from "../../../../Models/tournaments/tournament";
 import { filter, timedOut } from "../../../functions/messageInteractionFunctions";
 import { loginResponse } from "../../../functions/loginResponse";
 import channelID from "../../../functions/channelID";
@@ -48,7 +47,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
         round = await getRound(m, stage);
 
     // Check if a pickban order already exists
-    const orderQ = await MapOrder
+    const orderQ = MapOrder
         .createQueryBuilder("order")
         .leftJoinAndSelect("order.round", "round")
         .leftJoinAndSelect("order.stage", "stage");
@@ -115,6 +114,11 @@ async function run (m: Message | ChatInputCommandInteraction) {
                 setTimeout(async () => (await i.deleteReply()), 5000);
                 return;
             }
+            if (order.map(o => o.set).filter((v, i, a) => a.indexOf(v) === i).length % 2 === 0) {
+                await i.reply("U have an even number of sets which is impossible to have a clear winner for the match.");
+                setTimeout(async () => (await i.deleteReply()), 5000);
+                return;
+            }
             await i.reply("Pickban order created");
             setTimeout(async () => (await i.deleteReply()), 5000);
             stopped = true;
@@ -129,8 +133,7 @@ async function run (m: Message | ChatInputCommandInteraction) {
         const orderMade: MapOrder[] = [];
 
         let newOrder = "";
-        for (let i = 0; i < orderMsg.length; i++) {
-            const o = orderMsg[i];
+        for (const o of orderMsg) {
             if (o.length !== 2) {
                 const reply = await msg.reply(`Invalid pickban order: ${o}`);
                 setTimeout(async () => {

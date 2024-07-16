@@ -1,29 +1,38 @@
-import Router from "@koa/router";
+import { CorsaceRouter } from "../../../corsaceRouter";
 import koaBasicAuth from "koa-basic-auth";
 import { config } from "node-config-ts";
 import { Matchup } from "../../../../Models/tournaments/matchup";
-import { Next, ParameterizedContext } from "koa";
+import { BanchoMatchupState } from "koa";
 import runMatchup from "../../../../BanchoBot/functions/tournaments/matchup/runMatchup";
 import state, { MatchupList } from "../../../../BanchoBot/state";
-import { publish } from "../../../../BanchoBot/functions/tournaments/matchup/centrifugo";
+import { publish } from "../../../functions/centrifugo";
 import { BanchoLobbyPlayerStates } from "bancho.js";
 import getMappoolSlotMods from "../../../../BanchoBot/functions/tournaments/matchup/getMappoolSlotMods";
 import { MatchupMap } from "../../../../Models/tournaments/matchupMap";
 import ormConfig from "../../../../ormconfig";
+import { StageType } from "../../../../Interfaces/stage";
 
-const banchoRefereeRouter = new Router();
+const banchoRefereeRouter  = new CorsaceRouter<BanchoMatchupState>();
 
-banchoRefereeRouter.use(koaBasicAuth({
+banchoRefereeRouter.$use(koaBasicAuth({
     name: config.interOpAuth.username,
     pass: config.interOpAuth.password,
 }));
 
-async function validateMatchup (ctx: ParameterizedContext, next: Next) {
+banchoRefereeRouter.$use<{ pulse: boolean }>("/:matchupID", async (ctx, next) => {
     const id = ctx.params.matchupID;
     if (!id || isNaN(parseInt(id))) {
         ctx.body = {
             success: false,
             error: "Invalid matchup ID",
+        };
+        return;
+    }
+
+    if (!ctx.request.body.user) {
+        ctx.body = {
+            success: false,
+            error: "Missing user",
         };
         return;
     }
@@ -58,10 +67,10 @@ async function validateMatchup (ctx: ParameterizedContext, next: Next) {
 
     ctx.state.matchupID = parseInt(id);
     await next();
-}
+});
 
-banchoRefereeRouter.post("/:matchupID/pulse", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post<{ pulse: boolean }>("/:matchupID/pulse", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: true,
             pulse: false,
@@ -69,16 +78,17 @@ banchoRefereeRouter.post("/:matchupID/pulse", validateMatchup, async (ctx) => {
         return;
     }
 
-    const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+    // TODO: Remove ! after reactive koa typing is functional
+    const mpLobby = state.matchups[ctx.state.matchupID].lobby;
     await mpLobby.updateSettings();
 
-    await publish(state.matchups[parseInt(ctx.state.matchupID)].matchup, { 
+    await publish(`matchup:${state.matchups[ctx.state.matchupID].matchup.ID}`, { 
         type: "settings",
         slots: mpLobby.slots.map((slot, i) => ({
             playerOsuID: slot?.user.id,
             slot: i + 1,
             mods: slot?.mods.map(mod => mod.shortMod).join(""),
-            team: slot?.team,
+            team: slot?.team as "Blue" | "Red",
             ready: slot?.state === BanchoLobbyPlayerStates.Ready,
         })),
     });
@@ -89,26 +99,33 @@ banchoRefereeRouter.post("/:matchupID/pulse", validateMatchup, async (ctx) => {
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/createLobby", validateMatchup, async (ctx) => {
-    const matchupList: MatchupList | undefined | null = state.matchups[parseInt(ctx.state.matchupID)];
+banchoRefereeRouter.$post("/:matchupID/createLobby", async (ctx) => {
+    const matchupList: MatchupList | undefined | null = state.matchups[ctx.state.matchupID];
     let matchup: Matchup | undefined | null = matchupList?.matchup;
     if (!matchup) {
         matchup = await Matchup
             .createQueryBuilder("matchup")
             .leftJoinAndSelect("matchup.referee", "referee")
             .leftJoinAndSelect("matchup.streamer", "streamer")
+            .leftJoinAndSelect("matchup.round", "round")
+            .leftJoinAndSelect("round.mapOrder", "roundMapOrder")
+            .leftJoinAndSelect("round.mappool", "roundMappool")
+            .leftJoinAndSelect("roundMappool.slots", "roundSlot")
+            .leftJoinAndSelect("roundSlot.maps", "roundMap")
+            .leftJoinAndSelect("roundMap.beatmap", "roundBeatmap")
             .innerJoinAndSelect("matchup.stage", "stage")
-            .innerJoinAndSelect("stage.mappool", "mappool")
-            .innerJoinAndSelect("mappool.slots", "slot")
-            .innerJoinAndSelect("slot.maps", "map")
-            .innerJoinAndSelect("map.beatmap", "beatmap")
+            .leftJoinAndSelect("stage.mapOrder", "stageMapOrder")
+            .leftJoinAndSelect("stage.mappool", "stageMappool")
+            .leftJoinAndSelect("stageMappool.slots", "stageSlot")
+            .leftJoinAndSelect("stageSlot.maps", "stageMap")
+            .leftJoinAndSelect("stageMap.beatmap", "stageBeatmap")
             .innerJoinAndSelect("stage.tournament", "tournament")
             .innerJoinAndSelect("tournament.organizer", "organizer")
             .leftJoinAndSelect("matchup.team1", "team1")
-            .leftJoinAndSelect("team1.manager", "manager1")
+            .leftJoinAndSelect("team1.captain", "captain1")
             .leftJoinAndSelect("team1.members", "member1")
             .leftJoinAndSelect("matchup.team2", "team2")
-            .leftJoinAndSelect("team2.manager", "manager2")
+            .leftJoinAndSelect("team2.captain", "captain2")
             .leftJoinAndSelect("team2.members", "member2")
             .where("matchup.ID = :id", { id: ctx.params.matchupID })
             .getOne();
@@ -121,7 +138,7 @@ banchoRefereeRouter.post("/:matchupID/createLobby", validateMatchup, async (ctx)
         }
     }
 
-    if (!ctx.request.body.replace && (matchup.mp || matchup.baseURL || matchup.winner)) {
+    if (!ctx.request.body.replace && (matchup.mp ?? matchup.baseURL ?? matchup.winner)) {
         ctx.body = {
             success: false,
             error: "Matchup already has a lobby",
@@ -134,7 +151,7 @@ banchoRefereeRouter.post("/:matchupID/createLobby", validateMatchup, async (ctx)
     };
 
     try {
-        await runMatchup(matchup, ctx.request.body.replace, ctx.request.body.auto);
+        await runMatchup(matchup, ctx.request.body.replace, ctx.request.body.auto, `${ctx.request.body.user.osu.username} (${ctx.request.body.user.osu.userID})`);
     } catch (error) {
         if (error instanceof Error)
             ctx.body = {
@@ -149,27 +166,53 @@ banchoRefereeRouter.post("/:matchupID/createLobby", validateMatchup, async (ctx)
     }
 });
 
-banchoRefereeRouter.post("/:matchupID/roll", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/roll", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
         };
         return;
     }
-    const mpChannel = state.matchups[parseInt(ctx.state.matchupID)].lobby.channel;
-    
-    await mpChannel.sendMessage("OK we're gonna roll now I'm gonna run !roll 2");
-    await mpChannel.sendMessage(`${state.matchups[parseInt(ctx.state.matchupID)].matchup.team1?.name} will be 1 and ${state.matchups[parseInt(ctx.state.matchupID)].matchup.team2?.name} will be 2`);
-    await mpChannel.sendMessage("!roll 2");
+
+    if (state.matchups[ctx.state.matchupID].matchup.stage?.stageType === StageType.Qualifiers) {
+        ctx.body = {
+            success: false,
+            error: "Cannot roll for qualifiers",
+        };
+        return;
+    }
+
+    const allowed = ctx.request.body.allowed;
+    if (allowed !== "captains" && allowed !== "all" && allowed !== "bot") {
+        ctx.body = {
+            success: false,
+            error: "Invalid allowed value",
+        };
+        return;
+    }
+
+    const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const mpChannel = state.matchups[ctx.state.matchupID].lobby.channel;
+    if (allowed === "captains")
+        await mpChannel.sendMessage("OK we're gonna roll now, I want the captains to do !roll, higher roll will be considered Team 1");
+    else if (allowed === "all")
+        await mpChannel.sendMessage("OK we're gonna roll now, I want the stand-in captains to do !roll, higher roll will be considered Team 1");
+    else if (allowed === "bot") {
+        await mpChannel.sendMessage("OK we're gonna roll now, I'm gonna run !roll 2");
+        await pause(100);
+        await mpChannel.sendMessage(`${state.matchups[ctx.state.matchupID].matchup.team1?.name} will be 1 and ${state.matchups[ctx.state.matchupID].matchup.team2?.name} will be 2`);
+        await pause(100);
+        await mpChannel.sendMessage("!roll 2");
+    }
 
     ctx.body = {
         success: true,
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/invite", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/invite", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -185,7 +228,7 @@ banchoRefereeRouter.post("/:matchupID/invite", validateMatchup, async (ctx) => {
         return;
     }
 
-    const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+    const mpLobby = state.matchups[ctx.state.matchupID].lobby;
     await mpLobby.invitePlayer(`#${ctx.request.body.userID}`);
 
     ctx.body = {
@@ -193,8 +236,8 @@ banchoRefereeRouter.post("/:matchupID/invite", validateMatchup, async (ctx) => {
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/addRef", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/addRef", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -210,7 +253,7 @@ banchoRefereeRouter.post("/:matchupID/addRef", validateMatchup, async (ctx) => {
         return;
     }
 
-    const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+    const mpLobby = state.matchups[ctx.state.matchupID].lobby;
     await mpLobby.addRef(`#${ctx.request.body.userID}`);
 
     ctx.body = {
@@ -218,9 +261,9 @@ banchoRefereeRouter.post("/:matchupID/addRef", validateMatchup, async (ctx) => {
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/selectMap", validateMatchup, async (ctx) => {
+banchoRefereeRouter.$post("/:matchupID/selectMap", async (ctx) => {
     const mapID = ctx.request.body.mapID;
-    if (!state.matchups[parseInt(ctx.state.matchupID)] || !mapID || typeof mapID !== "number" || isNaN(mapID)) {
+    if (!state.matchups[ctx.state.matchupID] || !mapID || typeof mapID !== "number" || isNaN(mapID)) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -237,7 +280,17 @@ banchoRefereeRouter.post("/:matchupID/selectMap", validateMatchup, async (ctx) =
         return;
     }
 
-    const slot = state.matchups[parseInt(ctx.state.matchupID)].matchup.stage!.mappool!.flatMap(pool => pool.slots).find(slot => slot.maps.some(map => map.ID === mapID));
+    const set = ctx.request.body.set;
+    if (typeof set !== "number" || isNaN(set) || set < 0) {
+        ctx.body = {
+            success: false,
+            error: "Invalid set provided",
+        };
+        return;
+    }
+
+    // TODO: Remove ! after reactive koa typing is functional
+    const slot = state.matchups[ctx.state.matchupID].matchup.stage!.mappool!.flatMap(pool => pool.slots).find(slot => slot.maps.some(map => map.ID === mapID));
     if (!slot) {
         ctx.body = {
             success: false,
@@ -255,20 +308,28 @@ banchoRefereeRouter.post("/:matchupID/selectMap", validateMatchup, async (ctx) =
         return;
     }
 
+    if (!state.matchups[ctx.state.matchupID].matchup.sets?.[set]) {
+        ctx.body = {
+            success: false,
+            error: "Set not found",
+        };
+        return;
+    }
+
     if (status !== 2) {
         // Add map to matchup.maps
-        if (!state.matchups[parseInt(ctx.state.matchupID)].matchup.maps)
-            state.matchups[parseInt(ctx.state.matchupID)].matchup.maps = [];
-        const matchupMap = new MatchupMap;
+        if (!state.matchups[ctx.state.matchupID].matchup.sets![set].maps)
+            state.matchups[ctx.state.matchupID].matchup.sets![set].maps = [];
+        const matchupMap = new MatchupMap();
         matchupMap.map = map;
-        matchupMap.matchup = state.matchups[parseInt(ctx.state.matchupID)].matchup;
+        matchupMap.set = state.matchups[ctx.state.matchupID].matchup.sets![set];
         matchupMap.status = status;
-        matchupMap.order = state.matchups[parseInt(ctx.state.matchupID)].matchup.maps!.length + 1;
+        matchupMap.order = state.matchups[ctx.state.matchupID].matchup.sets![set].maps!.length + 1;
         await matchupMap.save();
-        state.matchups[parseInt(ctx.state.matchupID)].matchup.maps!.push(matchupMap);
+        state.matchups[ctx.state.matchupID].matchup.sets![set].maps!.push(matchupMap);
 
-        await publish(state.matchups[parseInt(ctx.state.matchupID)].matchup, {
-            type: "map",
+        await publish(`matchup:${state.matchups[ctx.state.matchupID].matchup.ID}`, {
+            type: "selectMap",
             map: {
                 ID: matchupMap.ID,
                 map,
@@ -277,10 +338,12 @@ banchoRefereeRouter.post("/:matchupID/selectMap", validateMatchup, async (ctx) =
             },
         });
     } else {
-        const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+
+        const mpLobby = state.matchups[ctx.state.matchupID].lobby;
         await Promise.all([
             mpLobby.setMap(map.beatmap!.ID),
             mpLobby.setMods(getMappoolSlotMods(slot.allowedMods), typeof slot.allowedMods !== "number" || typeof slot.uniqueModCount === "number" || typeof slot.userModCount === "number"),
+            mpLobby.startTimer(typeof ctx.request.body.time !== "number" || isNaN(ctx.request.body.time) ? 90 : ctx.request.body.time),
         ]);
     }
 
@@ -289,9 +352,9 @@ banchoRefereeRouter.post("/:matchupID/selectMap", validateMatchup, async (ctx) =
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/deleteMap", validateMatchup, async (ctx) => {
+banchoRefereeRouter.$post<{ mapID: number }>("/:matchupID/deleteMap", async (ctx) => {
     const mapID = ctx.request.body.mapID;
-    if (!state.matchups[parseInt(ctx.state.matchupID)] || !mapID || typeof mapID !== "number" || isNaN(mapID)) {
+    if (!state.matchups[ctx.state.matchupID] || !mapID || typeof mapID !== "number" || isNaN(mapID)) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -299,7 +362,24 @@ banchoRefereeRouter.post("/:matchupID/deleteMap", validateMatchup, async (ctx) =
         return;
     }
 
-    const matchupMap = state.matchups[parseInt(ctx.state.matchupID)].matchup.maps?.find(map => map.ID === mapID);
+    const set = ctx.request.body.set;
+    if (typeof set !== "number" || isNaN(set) || set < 0) {
+        ctx.body = {
+            success: false,
+            error: "Invalid set provided",
+        };
+        return;
+    }
+
+    if (!state.matchups[ctx.state.matchupID].matchup.sets?.[set]) {
+        ctx.body = {
+            success: false,
+            error: "Set not found",
+        };
+        return;
+    }
+
+    const matchupMap = state.matchups[ctx.state.matchupID].matchup.sets![set].maps?.find(map => map.ID === mapID);
     if (!matchupMap) {
         ctx.body = {
             success: false,
@@ -310,13 +390,13 @@ banchoRefereeRouter.post("/:matchupID/deleteMap", validateMatchup, async (ctx) =
 
     try {
         await ormConfig.transaction(async manager => {
+            state.matchups[ctx.state.matchupID].matchup.sets![set].maps = state.matchups[ctx.state.matchupID].matchup.sets![set].maps!.filter(map => map.ID !== mapID);
+            state.matchups[ctx.state.matchupID].matchup.sets![set].maps!.forEach((map, i) => map.order = i + 1);
+            
             await manager.remove(matchupMap);
+            await Promise.all(state.matchups[ctx.state.matchupID].matchup.sets![set].maps!.map(map => manager.save(map)));
 
-            state.matchups[parseInt(ctx.state.matchupID)].matchup.maps = state.matchups[parseInt(ctx.state.matchupID)].matchup.maps?.filter(map => map.ID !== mapID);
-            state.matchups[parseInt(ctx.state.matchupID)].matchup.maps?.forEach((map, i) => map.order = i + 1);
-            await Promise.all(state.matchups[parseInt(ctx.state.matchupID)].matchup.maps?.map(map => manager.save(map)) ?? []);
-
-            await state.matchups[parseInt(ctx.state.matchupID)].lobby.channel.sendMessage(`Ref has deleted a map from matchup ${matchupMap.map.ID}`);
+            await state.matchups[ctx.state.matchupID].lobby.channel.sendMessage(`Ref has deleted a map from matchup ${matchupMap.map.beatmap?.ID}`);
         });
 
         ctx.body = {
@@ -337,8 +417,8 @@ banchoRefereeRouter.post("/:matchupID/deleteMap", validateMatchup, async (ctx) =
     }
 });
 
-banchoRefereeRouter.post("/:matchupID/startMap", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/startMap", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -354,7 +434,7 @@ banchoRefereeRouter.post("/:matchupID/startMap", validateMatchup, async (ctx) =>
         return;
     }
 
-    const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+    const mpLobby = state.matchups[ctx.state.matchupID].lobby;
     await mpLobby.startMatch(ctx.request.body.time || 5);
 
     ctx.body = {
@@ -362,8 +442,8 @@ banchoRefereeRouter.post("/:matchupID/startMap", validateMatchup, async (ctx) =>
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/timer", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/timer", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -379,7 +459,7 @@ banchoRefereeRouter.post("/:matchupID/timer", validateMatchup, async (ctx) => {
         return;
     }
 
-    const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+    const mpLobby = state.matchups[ctx.state.matchupID].lobby;
     await mpLobby.startTimer(ctx.request.body.time);
 
     ctx.body = {
@@ -387,8 +467,8 @@ banchoRefereeRouter.post("/:matchupID/timer", validateMatchup, async (ctx) => {
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/settings", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/settings", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -396,16 +476,16 @@ banchoRefereeRouter.post("/:matchupID/settings", validateMatchup, async (ctx) =>
         return;
     }
 
-    const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+    const mpLobby = state.matchups[ctx.state.matchupID].lobby;
     await mpLobby.updateSettings();
 
-    await publish(state.matchups[parseInt(ctx.state.matchupID)].matchup, { 
+    await publish(`matchup:${state.matchups[ctx.state.matchupID].matchup.ID}`, { 
         type: "settings",
         slots: mpLobby.slots.map((slot, i) => ({
             playerOsuID: slot?.user.id,
             slot: i + 1,
             mods: slot?.mods.map(mod => mod.shortMod).join(""),
-            team: slot?.team,
+            team: slot?.team as "Blue" | "Red",
             ready: slot?.state === BanchoLobbyPlayerStates.Ready,
         })),
     });
@@ -415,8 +495,8 @@ banchoRefereeRouter.post("/:matchupID/settings", validateMatchup, async (ctx) =>
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/abortMap", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/abortMap", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -424,7 +504,7 @@ banchoRefereeRouter.post("/:matchupID/abortMap", validateMatchup, async (ctx) =>
         return;
     }
 
-    const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+    const mpLobby = state.matchups[ctx.state.matchupID].lobby;
     await mpLobby.abortMatch();
 
     ctx.body = {
@@ -432,8 +512,8 @@ banchoRefereeRouter.post("/:matchupID/abortMap", validateMatchup, async (ctx) =>
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/message", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/message", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -441,7 +521,7 @@ banchoRefereeRouter.post("/:matchupID/message", validateMatchup, async (ctx) => 
         return;
     }
 
-    const mpChannel = state.matchups[parseInt(ctx.state.matchupID)].lobby.channel;
+    const mpChannel = state.matchups[ctx.state.matchupID].lobby.channel;
     await mpChannel.sendMessage(`<${ctx.request.body.username}>: ${ctx.request.body.message}`);
 
     ctx.body = {
@@ -449,8 +529,8 @@ banchoRefereeRouter.post("/:matchupID/message", validateMatchup, async (ctx) => 
     };
 });
 
-banchoRefereeRouter.post("/:matchupID/closeLobby", validateMatchup, async (ctx) => {
-    if (!state.matchups[parseInt(ctx.state.matchupID)]) {
+banchoRefereeRouter.$post("/:matchupID/closeLobby", async (ctx) => {
+    if (!state.matchups[ctx.state.matchupID]) {
         ctx.body = {
             success: false,
             error: "Matchup not found",
@@ -458,7 +538,7 @@ banchoRefereeRouter.post("/:matchupID/closeLobby", validateMatchup, async (ctx) 
         return;
     }
 
-    const mpLobby = state.matchups[parseInt(ctx.state.matchupID)].lobby;
+    const mpLobby = state.matchups[ctx.state.matchupID].lobby;
     await mpLobby.closeLobby();
 
     ctx.body = {

@@ -16,7 +16,7 @@ async function getNextBeatmap (matchup: Matchup, mpLobby: BanchoLobby, mpChannel
                 .flatMap(slot => slot.maps
                     .sort((a, b) => a.order - b.order)
                 )
-                .filter(map => !matchup.maps!
+                .filter(map => !matchup.sets![0].maps! // Only 1 set in qualifiers
                     .some(matchMap => matchMap.map.beatmap?.ID === map.beatmap?.ID)
                 );
 
@@ -33,7 +33,7 @@ async function getNextBeatmap (matchup: Matchup, mpLobby: BanchoLobby, mpChannel
             let gotBeatmap = false;
             const messageHandler = async (message: BanchoMessage) => {
                 if (message.user.ircUsername === "BanchoBot" && message.content === "Countdown finished") {
-                    setTimeout(() => {
+                    setTimeout(async () => {
                         if (gotBeatmap)
                             return;
                         if (beatmaps.length === 0)
@@ -41,21 +41,21 @@ async function getNextBeatmap (matchup: Matchup, mpLobby: BanchoLobby, mpChannel
                         if (!beatmaps[0].beatmap)
                             return reject(new Error("Beatmap doesn't exist CONTACT CORSACE IMMEDIATELY"));
 
-                        mpChannel.sendMessage("OK U GUYS ARE TAKING TOO LON g im picking a random map for all of u to play now GL");
+                        await mpChannel.sendMessage("OK U GUYS ARE TAKING TOO LON g im picking the next map for all of u to play now GL");
                         const slotMod = pool.slots.find(slot => slot.maps.some(map => map.beatmap?.ID === beatmaps[0].beatmap?.ID))!;
                         mpChannel.removeListener("message", messageHandler);
                         return resolve([beatmaps[0].beatmap, slotMod.allowedMods, typeof slotMod.allowedMods !== "number" || typeof slotMod.uniqueModCount === "number" || typeof slotMod.userModCount === "number"]);
                     }, leniencyTime);
                 }
 
-                const isManagerMessage = !message.self && message.user.id && (
+                const isCaptainMessage = !message.self && message.user.id && (
                     (
                         matchup.stage?.stageType === StageType.Qualifiers &&
-                        matchup.teams?.some(team => team.manager.osu.userID === message.user.id.toString())
-                    ) ||
-                    [matchup.team1, matchup.team2].some(team => team?.manager.osu.userID === message.user.id.toString()));
+                        matchup.teams?.some(team => team.captain.osu.userID === message.user.id.toString())
+                    ) ??
+                    [matchup.team1, matchup.team2].some(team => team?.captain.osu.userID === message.user.id.toString()));
 
-                if (!isManagerMessage)
+                if (!isCaptainMessage)
                     return;
 
                 const contentParts = message.content.split(" ");
@@ -72,7 +72,7 @@ async function getNextBeatmap (matchup: Matchup, mpLobby: BanchoLobby, mpChannel
                 let map: MappoolMap | undefined;
 
                 if (isNaN(id)) {
-                    const nums = param.match(/\d+/g) || [];
+                    const nums = param.match(/\d+/g) ?? [];
                     const order = parseInt(nums[nums.length - 1]);
                     const slot = pool.slots.find(slot => param.toLowerCase().includes(slot.acronym.toLowerCase()));
 
@@ -100,8 +100,11 @@ async function getNextBeatmap (matchup: Matchup, mpLobby: BanchoLobby, mpChannel
                 return resolve([map.beatmap, slotMod.allowedMods, typeof slotMod.allowedMods !== "number" || typeof slotMod.uniqueModCount === "number" || typeof slotMod.userModCount === "number"]);
             };
 
-            mpChannel.sendMessage("It's time to pick a map!!11!1");
-            mpLobby.startTimer(matchup.stage!.tournament.mapTimer || 90);
+            // TODO: Not sure how to handle this currently... uh
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
+            mpChannel.sendMessage("time to pick the next map (type for example NM1 to play NM1)");
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
+            mpLobby.startTimer(matchup.stage!.tournament.mapTimer ?? 90);
             mpChannel.on("message", messageHandler);
         } else {
             // TODO: implement this
@@ -124,6 +127,6 @@ export default async function loadNextBeatmap (matchup: Matchup, mpLobby: Bancho
         mpLobby.setMap(nextBeatmapInfo[0].ID),
         mpLobby.setMods(mods, nextBeatmapInfo[2]),
     ]);
-    await mpLobby.startTimer(matchup.stage!.tournament.readyTimer || 90);
+    await mpLobby.startTimer(matchup.stage!.tournament.readyTimer ?? 90);
     return false;
 }
